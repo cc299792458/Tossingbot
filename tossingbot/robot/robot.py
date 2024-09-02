@@ -148,7 +148,7 @@ class BaseRobot:
         return p.getLinkState(self.robot_id, self.end_effector_id)[0]
 
 class UR5Robotiq85(BaseRobot):
-    def __init__(self, base_position, base_orientation):
+    def __init__(self, base_position, base_orientation, visualize_coordinate_frames=False):
         self.num_arm_dofs = 6
         self.initial_position = [
             -1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001,
@@ -158,6 +158,9 @@ class UR5Robotiq85(BaseRobot):
         self.gripper_range = [0, 0.085]
 
         super().__init__(base_position, base_orientation)
+
+        if visualize_coordinate_frames:
+            self.visualize_coordinate_frames()
 
     def load_robot(self):
         """
@@ -262,3 +265,47 @@ class UR5Robotiq85(BaseRobot):
         """
         # return 0.715 - math.asin((open_length - 0.010) / 0.1143)
         return 0.715 - math.asin((open_length - 0.010) / 0.1143)
+
+    def visualize_coordinate_frames(self, axis_length=0.1):
+        """
+        Draw the coordinate frames for each link in the URDF.
+
+        Args:
+            axis_length (float): The length of the coordinate axes.
+        """
+        num_joints = p.getNumJoints(self.robot_id)
+        
+        for joint_id in range(num_joints):
+            # The link's local origin
+            pos = [0, 0, 0]
+            
+            # Draw the X-axis (red)
+            p.addUserDebugLine(
+                pos, 
+                [axis_length, 0, 0], 
+                [1, 0, 0],  # Color: Red
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=joint_id
+            )
+            
+            # Draw the Y-axis (green)
+            p.addUserDebugLine(
+                pos, 
+                [0, axis_length, 0], 
+                [0, 1, 0],  # Color: Green
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=joint_id
+            )
+            
+            # Draw the Z-axis (blue)
+            p.addUserDebugLine(
+                pos, 
+                [0, 0, axis_length], 
+                [0, 0, 1],  # Color: Blue
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=joint_id
+            )
+            
+            # Optionally, add the link name as text
+            link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
+            p.addUserDebugText(link_name, pos, textColorRGB=[1, 1, 1], parentObjectUniqueId=self.robot_id, parentLinkIndex=joint_id)

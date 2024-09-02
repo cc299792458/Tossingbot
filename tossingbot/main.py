@@ -10,9 +10,9 @@ if __name__ == '__main__':
     p.setGravity(0,0,-9.81)
     planeId = p.loadURDF("plane.urdf") 
     
-    robot = UR5Robotiq85((0, 0.0, 0.0), (0, 0, 0))
+    robot = UR5Robotiq85((0, 0.0, 0.0), (0, 0, 0), visualize_coordinate_frames=True)
     
-    for i in range(10000):
+    while True:
         p.stepSimulation()
         time.sleep(1./240.)
 
