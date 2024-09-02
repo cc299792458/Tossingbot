@@ -9,25 +9,7 @@ class BaseRobot:
 
     def __init__(self, base_position, base_orientation):
         """
-        Arguments:
-            base_position: [x, y, z]
-            base_orientation: [roll, pitch, yaw]
-
-        Attributes:
-            robot_id: Int, the ID of the robot
-            end_effector_id: Int, the ID of the End-Effector
-            num_arm_dofs: Int, the number of DoFs of the arm
-            joints: List, a list of joint info
-            controllable_joints: List of Ints, IDs for all controllable joints
-            arm_controllable_joints: List of Ints, IDs for all controllable joints on the arm
-            arm_lower_limits: List, the lower limits for all controllable joints on the arm
-            arm_upper_limits: List, the upper limits for all controllable joints on the arm
-            arm_joint_ranges: List, the range of motion for each joint
-            arm_initial_position: List, the initial position for all controllable joints on the arm
-            gripper_range: List[Min, Max]
-
-        Methods:
-        
+        Initialize the robot with its base position and orientation.
         """
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
@@ -35,6 +17,9 @@ class BaseRobot:
         self.reset()
 
     def load_robot(self):
+        """
+        Load the robot URDF and parse joint information.
+        """
         self.robot_id = p.loadURDF(
             './assets/urdf/ur5_robotiq_85.urdf',
             self.base_position,
@@ -45,6 +30,9 @@ class BaseRobot:
         self._parse_joint_information()
 
     def _parse_joint_information(self):
+        """
+        Parse the joint information from the loaded URDF.
+        """
         num_joints = p.getNumJoints(self.robot_id)
         JointInfo = namedtuple('JointInfo', [
             'id', 'name', 'type', 'damping', 'friction',
@@ -93,18 +81,21 @@ class BaseRobot:
         ][:self.num_arm_dofs]
 
     def reset(self):
+        """
+        Reset the robot to its initial configuration.
+        """
         self.reset_arm()
 
     def reset_arm(self):
         """
-        Reset the arm to its initial position
+        Reset the arm to its initial position.
         """
         self.set_arm_joint_position(self.initial_position[0:6])
         self.set_arm_joint_position_target(self.initial_position[0:6])
 
     def set_arm_joint_position(self, position):
         """
-        Set the position for the arm joints
+        Set the position for the arm joints.
         """
         assert len(position) == self.num_arm_dofs
         for joint_id, pos in zip(self.arm_controllable_joints, position):
@@ -112,7 +103,7 @@ class BaseRobot:
 
     def set_arm_joint_position_target(self, target_position):
         """
-        Set the target position for the arm joints
+        Set the target position for the arm joints.
         """
         assert len(target_position) == self.num_arm_dofs
         for joint_id, pos in zip(self.arm_controllable_joints, target_position):
@@ -122,27 +113,10 @@ class BaseRobot:
                 maxVelocity=self.joints[joint_id].max_velocity
             )
 
-    def set_arm_joint_velocity_target(self, target_velocity):
-        raise NotImplementedError
-
-    def set_end_effector_pose(self, pose):
-        joint_position = self.inverse_kinematics(pose)
-        self.set_arm_joint_position(joint_position)
-
-    def set_end_effector_pose_target(self, target_pose):
-        """
-        Set the target pose for the end effector using inverse kinematics
-        """
-        target_joint_position = self.inverse_kinematics(target_pose)
-        self.set_arm_joint_position_target(target_joint_position)
-
-    def set_end_effector_velocity(self, velocity):
-        raise NotImplementedError
-
-    def set_end_effector_velocity_target(self, target_velocity):
-        raise NotImplementedError
-
     def inverse_kinematics(self, pose):
+        """
+        Calculate inverse kinematics for the given end effector pose.
+        """
         x, y, z, roll, pitch, yaw = pose
         position = (x, y, z)
         orientation = p.getQuaternionFromEuler((roll, pitch, yaw))
@@ -153,43 +127,32 @@ class BaseRobot:
             self.arm_joint_ranges, current_joint_position,
             maxNumIterations=20
         )
-
         return joint_position
 
     def get_joint_position(self):
         """
-        Get the current position of the joints
+        Get the current position of the joints.
         """
-        position = []
-        for joint_id in self.controllable_joints:
-            pos, _ = p.getJointState(self.robot_id, joint_id)[:2]
-            position.append(pos)
-        return position
+        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.controllable_joints]
 
     def get_joint_velocity(self):
         """
-        Get the current velocity of the joints
+        Get the current velocity of the joints.
         """
-        velocity = []
-        for joint_id in self.controllable_joints:
-            _, vel = p.getJointState(self.robot_id, joint_id)[:2]
-            velocity.append(vel)
-        return velocity
+        return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.controllable_joints]
 
     def get_end_effector_position(self):
         """
-        Get the current position of the end effector
+        Get the current position of the end effector.
         """
-        end_effector_position = p.getLinkState(self.robot_id, self.end_effector_id)[0]
-        return end_effector_position
+        return p.getLinkState(self.robot_id, self.end_effector_id)[0]
 
 class UR5Robotiq85(BaseRobot):
     def __init__(self, base_position, base_orientation):
         self.num_arm_dofs = 6
         self.initial_position = [
-            -1.569, -1.545, 1.344,
-            -1.371, -1.571, 0.001,
-            0.085   # Gripper
+            -1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001,
+            0.085,
         ]
         self.end_effector_id = 7
         self.gripper_range = [0, 0.085]
@@ -197,10 +160,16 @@ class UR5Robotiq85(BaseRobot):
         super().__init__(base_position, base_orientation)
 
     def load_robot(self):
+        """
+        Load the URDF and set up mimic joints for the gripper.
+        """
         super().load_robot()
         self._setup_mimic_joints()
 
     def _setup_mimic_joints(self):
+        """
+        Set up mimic joints for the gripper.
+        """
         parent_joint_name = 'finger_joint'
         child_joint_multipliers = {
             'right_outer_knuckle_joint': 1,
@@ -231,28 +200,43 @@ class UR5Robotiq85(BaseRobot):
             )
 
     def reset(self):
+        """
+        Reset the robot and gripper to the initial state.
+        """
         super().reset()
         self.reset_gripper()
 
     def reset_gripper(self):
-        self.set_gripper_position(self.gripper_range[1])
-        self.set_gripper_position_target(self.gripper_range[1])
+        """
+        Reset the gripper to its open position.
+        """
+        self.set_gripper_position(self.initial_position[-1])
+        # self.set_gripper_position_target(self.initial_position[-1])
 
     def open_gripper(self):
+        """
+        Open the gripper.
+        """
         self.set_gripper_position_target(self.gripper_range[1])
 
     def close_gripper(self):
+        """
+        Close the gripper.
+        """
         self.set_gripper_position_target(self.gripper_range[0])
 
     def set_gripper_position(self, open_length):
-        open_angle = self._length2angle(open_length=open_length)
+        """
+        Set the gripper's position by calculating the corresponding joint angle.
+        """
+        open_angle = self._length_to_angle(open_length)
         p.resetJointState(self.robot_id, self.mimic_parent_id, open_angle)
 
     def set_gripper_position_target(self, open_length):
         """
-        Set the gripper's position by calculating the corresponding joint angle
+        Set the target gripper position by calculating the corresponding joint angle.
         """
-        open_angle = self._length2angle(open_length=open_length)
+        open_angle = self._length_to_angle(open_length)
         p.setJointMotorControl2(
             self.robot_id, self.mimic_parent_id, p.POSITION_CONTROL,
             targetPosition=open_angle,
@@ -260,7 +244,21 @@ class UR5Robotiq85(BaseRobot):
             maxVelocity=self.joints[self.mimic_parent_id].max_velocity
         )
 
-    def _length2angle(self, open_length):
-        open_angle = 0.715 - math.asin((open_length - 0.010) / 0.1143)
+    def get_gripper_position(self):
+        """
+        Get the current position of the gripper.
+        """
+        return p.getJointState(self.robot_id, self.mimic_parent_id)[0]
+    
+    def get_gripper_velocity(self):
+        """
+        Get the current velocity of the gripper.
+        """
+        return p.getJointState(self.robot_id, self.mimic_parent_id)[1]
 
-        return open_angle
+    def _length_to_angle(self, open_length):
+        """
+        Convert gripper open length to joint angle.
+        """
+        # return 0.715 - math.asin((open_length - 0.010) / 0.1143)
+        return 0.715 - math.asin((open_length - 0.010) / 0.1143)
