@@ -22,21 +22,21 @@ def setup_workspace(length=0.3, width=0.4, position=[0.55, 0.0]):
     # Base of the workspace
     box_ids.append(create_box(half_extents=[length / 2, width / 2, thickness / 2], 
                               position=[position[0], position[1], thickness / 2], 
-                              mass=0))
+                              mass=0, color=[0.2, 0.2, 0.2, 1]))
     
     # Walls of the workspace
     box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
                               position=[position[0] - length / 2, position[1], height / 2 + thickness], 
-                              mass=0))
+                              mass=0, color=[0.2, 0.2, 0.2, 1]))
     box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
                               position=[position[0], position[1] - width / 2, height / 2 + thickness], 
-                              mass=0))
+                              mass=0, color=[0.2, 0.2, 0.2, 1]))
     box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
                               position=[position[0] + length / 2, position[1], height / 2 + thickness], 
-                              mass=0))
+                              mass=0, color=[0.2, 0.2, 0.2, 1]))
     box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
                               position=[position[0], position[1] + width / 2, height / 2 + thickness], 
-                              mass=0))
+                              mass=0, color=[0.2, 0.2, 0.2, 1]))
     
     return box_ids
 
@@ -50,7 +50,7 @@ def setup_objects(workspace_length, workspace_width, workspace_position, n_objec
     :param n_object: Number of objects to place in the workspace.
     :return: List of object IDs.
     """
-    margin = 0.05
+    margin = 0.075
     object_ids = []
     
     for i in range(n_object):
@@ -60,7 +60,7 @@ def setup_objects(workspace_length, workspace_width, workspace_position, n_objec
                            workspace_position[1] + workspace_width / 2 - margin)
         
         # Create a sphere for now (extendable to other object types)
-        object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02))
+        object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
 
     return object_ids
 
@@ -90,29 +90,29 @@ def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_c
     # Create outer walls
     box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
                               position=[position[0], y_start + total_width + divider_thickness / 2, height / 2],
-                              mass=0))
+                              mass=0, color=[0.8, 0.8, 0.8, 1]))
     box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
                               position=[position[0], y_start - divider_thickness / 2, height / 2],
-                              mass=0))
+                              mass=0, color=[0.8, 0.8, 0.8, 1]))
     box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
                               position=[x_start - divider_thickness / 2, position[1], height / 2],
-                              mass=0))
+                              mass=0, color=[0.8, 0.8, 0.8, 1]))
     box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
                               position=[x_start + total_length + divider_thickness / 2, position[1], height / 2],
-                              mass=0))
+                              mass=0, color=[0.8, 0.8, 0.8, 1]))
 
     # Create internal dividers
     for i in range(1, n_rows):
         y = y_start + i * width - divider_thickness
         box_ids.append(create_box(half_extents=[total_length / 2, divider_thickness / 2, height / 2],
                                   position=[position[0], y, height / 2],
-                                  mass=0))
+                                  mass=0, color=[0.8, 0.8, 0.8, 1]))
 
     for j in range(1, n_cols):
         x = x_start + j * length - divider_thickness
         box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
                                   position=[x, position[1], height / 2],
-                                  mass=0))
+                                  mass=0, color=[0.8, 0.8, 0.8, 1]))
     
     return box_ids
 
