@@ -3,7 +3,8 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+
+# TODO: debug when pitch is not 90
 
 def capture_rgbd_image(
     cam_target_pos=[0, 0, 0], cam_distance=2, 
@@ -114,7 +115,7 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     
     # Convert pixel coordinates to camera coordinates
     x_camera = (u_valid - cx) / fx * depth_valid
-    y_camera = (v_valid - cy) / fy * depth_valid
+    y_camera = -(v_valid - cy) / fy * depth_valid   # Invert y-axis to match PyBullet's coordinate system   # NOTE: this may be a wrong way.
     z_camera = -depth_valid  # Invert z-axis to match PyBullet's coordinate system
     
     # Stack the camera coordinates to form the point cloud
@@ -219,6 +220,7 @@ if __name__ == '__main__':
     # Load a plane and a robot into the simulation
     p.loadURDF("plane.urdf")
     p.loadURDF("r2d2.urdf", [0, 0, 1])  # Add an example robot
+    # p.loadURDF("r2d2.urdf", [0, 0, 1], [0, 0, 0.707, 0.707])  # Add an example robot
 
     # Initialize the plots for real-time display
     fig, axes = initialize_plots()
