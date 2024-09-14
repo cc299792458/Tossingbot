@@ -13,8 +13,26 @@ def capture_rgbd_image(
 ):
     """
     Capture an RGB-D image (RGB and Depth) from the scene using the camera.
+    
+    Parameters:
+    - cam_target_pos: Target position the camera is looking at.
+    - cam_distance: Distance of the camera from the target position.
+    - width: Width of the captured image in pixels.
+    - height: Height of the captured image in pixels.
+    - cam_yaw: Yaw angle of the camera in degrees.
+    - cam_pitch: Pitch angle of the camera in degrees.
+    - cam_roll: Roll angle of the camera in degrees.
+    - fov: Field of view of the camera in degrees.
+    - aspect: Aspect ratio of the camera.
+    - near: Near clipping plane distance.
+    - far: Far clipping plane distance.
+    
+    Returns:
+    - rgb_img: The captured RGB image as a (H, W, 3) numpy array.
+    - depth_img: The captured Depth image as a (H, W) numpy array.
+    - view_matrix: The view matrix used for capturing the image.
     """
-    # Get view and projection matrices
+    # Get the view and projection matrices
     view_matrix = p.computeViewMatrixFromYawPitchRoll(
         cameraTargetPosition=cam_target_pos,
         distance=cam_distance,
@@ -124,53 +142,85 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
+def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes):
+    """
+    Plot the RGB image, Depth image, and Point Cloud in a single figure with three subplots.
+
+    Parameters:
+    - rgb_img: The RGB image as a (H, W, 3) numpy array.
+    - point_cloud: The point cloud as a (N, 3) numpy array.
+    - colors: The colors for each point in the point cloud as a (N, 3) numpy array.
+    - fig: The matplotlib figure object.
+    - axes: A tuple of matplotlib axes objects (ax_rgb, ax_depth, ax_pointcloud).
+
+    Returns:
+    - None
+    """
+    ax_rgb, ax_pointcloud = axes
+
+    # Update RGB Image
+    ax_rgb.clear()
+    ax_rgb.imshow(rgb_img)
+    ax_rgb.set_title("RGB Image")
+    ax_rgb.axis('off')
+
+    # Update Point Cloud
+    ax_pointcloud.clear()
+    ax_pointcloud.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], 
+                          c=colors, s=1)
+    ax_pointcloud.set_title("Colored Point Cloud")
+    ax_pointcloud.set_xlabel("X")
+    ax_pointcloud.set_ylabel("Y")
+    ax_pointcloud.set_zlabel("Z")
+    # Removed fixed axis limits to prevent incomplete display
+
+    # Redraw the figure
+    plt.draw()
+    plt.pause(0.001)  # Pause briefly to allow the plot to update in real-time
+
 if __name__ == '__main__':
     # Initialize PyBullet simulation
     physicsClient = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.8)
 
-    # Create a plane and a box in the simulation
+    # Load a plane and a robot into the simulation
     p.loadURDF("plane.urdf")
     p.loadURDF("r2d2.urdf", [0, 0, 1])  # Add an example robot
 
     # Initialize the plot for real-time display
     plt.ion()  # Turn on interactive mode
-    fig = plt.figure(figsize=(12, 6))  # Create a figure
+    fig = plt.figure(figsize=(18, 6))  # Create a wider figure for better layout
 
+    # Create three subplots: RGB, and Point Cloud
+    ax_rgb = fig.add_subplot(1, 2, 1)
+    ax_pointcloud = fig.add_subplot(1, 2, 2, projection='3d')
+    
+    # Set initial titles and labels
+    ax_rgb.set_title("RGB Image")
+    ax_rgb.axis('off')
+
+    ax_pointcloud.set_title("Colored Point Cloud")
+    ax_pointcloud.set_xlabel("X")
+    ax_pointcloud.set_ylabel("Y")
+    ax_pointcloud.set_zlabel("Z")
+
+    # Pack the axes into a tuple for easy passing
+    axes = (ax_rgb, ax_pointcloud)
+
+    # Camera parameters
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
-    width, height = 64 * 3, 48 * 3
+    width, height = 64 * 3, 48 * 3  # 192x144 resolution
     cam_yaw, cam_pitch, cam_roll = 0, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
 
-    # Capture RGB and Depth images
-    rgb_img, depth_img, view_matrix = capture_rgbd_image(
-        cam_target_pos=cam_target_pos, cam_distance=cam_distance, 
-        width=width, height=height,
-        cam_yaw=cam_yaw, cam_pitch=cam_pitch, cam_roll=cam_roll,
-        fov=fov, aspect=aspect, near=near, far=far
-    )
-    
-    # Generate point cloud with color
-    point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
-                                                          rgb_img, 
-                                                          fov=fov, 
-                                                          aspect=aspect, 
-                                                          width=width, 
-                                                          height=height, 
-                                                          view_matrix=view_matrix, 
-                                                          to_world=True)
-
-    # Create a 3D plot for point cloud visualization
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_title("Colored Point Cloud")
-    scatter_plot = ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], 
-                              c=colors, s=1)
-
-    # Update the plot in the simulation loop
+    # Simulation loop
     for _ in range(1000):
         p.stepSimulation()
+        time.sleep(1./240.)  # Adjust sleep time as needed for real-time simulation
+
+        # Capture RGB and Depth images
         rgb_img, depth_img, view_matrix = capture_rgbd_image(
             cam_target_pos=cam_target_pos, cam_distance=cam_distance, 
             width=width, height=height,
@@ -178,7 +228,7 @@ if __name__ == '__main__':
             fov=fov, aspect=aspect, near=near, far=far
         )
 
-        # Update point cloud with color
+        # Generate point cloud with color
         point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
                                                               rgb_img, 
                                                               fov=fov, 
@@ -188,11 +238,8 @@ if __name__ == '__main__':
                                                               view_matrix=view_matrix, 
                                                               to_world=True)
 
-        # Clear and update scatter plot
-        ax.clear()
-        ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c=colors, s=1)
-        ax.set_title("Colored Point Cloud")
+        # Update the plots
+        plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes)
 
-        plt.pause(0.001)  # Pause briefly to allow the plot to update in real-time
-
+    # Disconnect the PyBullet simulation
     p.disconnect()
