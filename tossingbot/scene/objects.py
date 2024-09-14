@@ -2,7 +2,7 @@ import time
 import pybullet as p
 import pybullet_data
 
-def create_box(position=[0, 0, 1], orientation=[0, 0, 0], half_extents=[0.5, 0.5, 0.5], mass=1):
+def create_box(half_extents=[0.5, 0.5, 0.5], position=[0, 0, 1], orientation=[0, 0, 0], mass=1):
     """
     Function to create a box in the PyBullet simulation.
 
@@ -62,18 +62,6 @@ def create_cylinder(radius=0.3, height=1.0, position=[0, 0, 1], orientation=[0, 
     cylinderId = p.createMultiBody(mass, collision_shape, -1, position, cylinder_orientation)
     return cylinderId
 
-def create_plane(position=[0, 0, 0], orientation=[0, 0, 0], mass=0):
-    """
-    Function to create a plane in the PyBullet simulation.
-
-    :param position: List of 3 elements specifying the plane position (x, y, z)
-    :param orientation: List of 3 elements specifying the plane orientation in Euler angles (x, y, z)
-    :param mass: Mass of the plane. Typically set to 0 as a plane is generally fixed.
-    :return: planeId of the created plane
-    """
-    planeId = p.loadURDF("plane.urdf", position, p.getQuaternionFromEuler(orientation))
-    return planeId
-
 def create_mesh(mesh_file, position=[0, 0, 1], orientation=[0, 0, 0], mass=1):
     """
     Create a mesh object from a given .obj or .stl file.
@@ -89,6 +77,18 @@ def create_mesh(mesh_file, position=[0, 0, 1], orientation=[0, 0, 0], mass=1):
     meshId = p.createMultiBody(mass, collision_shape, -1, position, mesh_orientation)
     return meshId
 
+def create_plane(position=[0, 0, 0], orientation=[0, 0, 0], mass=0):
+    """
+    Function to create a plane in the PyBullet simulation.
+
+    :param position: List of 3 elements specifying the plane position (x, y, z)
+    :param orientation: List of 3 elements specifying the plane orientation in Euler angles (x, y, z)
+    :param mass: Mass of the plane. Typically set to 0 as a plane is generally fixed.
+    :return: planeId of the created plane
+    """
+    planeId = p.loadURDF("plane.urdf", position, p.getQuaternionFromEuler(orientation))
+    return planeId
+
 # Example usage
 if __name__ == '__main__':
     # Initialize PyBullet simulation
@@ -98,10 +98,10 @@ if __name__ == '__main__':
 
     # Create different objects, including fixed ones by setting mass=0
     create_plane()  # Fixed plane
-    create_box(position=[1, 1, 1], half_extents=[0.5, 0.5, 0.5], mass=0)  # Fixed box
+    create_box(position=[1, 1, 0.5], half_extents=[0.5, 0.5, 0.5], mass=0)  # Fixed box
     create_sphere(position=[-1, 1, 1], radius=0.5, mass=1)  # Movable sphere
     create_capsule(position=[2, 1, 1], radius=0.2, height=1.0, mass=1)  # Movable capsule
-    create_cylinder(position=[-2, 1, 1], radius=0.3, height=1.0, mass=0)  # Fixed cylinder
+    create_cylinder(position=[-2, 1, 0.5], radius=0.3, height=1.0, mass=0)  # Fixed cylinder
 
     # Example: Load a mesh from an .obj file
     for i in range(8):
