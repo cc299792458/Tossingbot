@@ -142,16 +142,48 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
+def initialize_plots(figsize=(12, 6)):
+    """
+    Initialize the matplotlib figure and subplots for real-time display.
+
+    Parameters:
+    - figsize: Tuple specifying the size of the figure.
+
+    Returns:
+    - fig: The matplotlib figure object.
+    - axes: A tuple containing the axes objects (ax_rgb, ax_pointcloud).
+    """
+    plt.ion()  # Turn on interactive mode
+    fig = plt.figure(figsize=figsize)  # Create a figure
+
+    # Create two subplots: RGB and Point Cloud
+    ax_rgb = fig.add_subplot(1, 2, 1)
+    ax_pointcloud = fig.add_subplot(1, 2, 2, projection='3d')
+    
+    # Set initial titles and labels
+    ax_rgb.set_title("RGB Image")
+    ax_rgb.axis('off')
+
+    ax_pointcloud.set_title("Colored Point Cloud")
+    ax_pointcloud.set_xlabel("X")
+    ax_pointcloud.set_ylabel("Y")
+    ax_pointcloud.set_zlabel("Z")
+
+    # Pack the axes into a tuple for easy passing
+    axes = (ax_rgb, ax_pointcloud)
+
+    return fig, axes
+
 def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes):
     """
-    Plot the RGB image, Depth image, and Point Cloud in a single figure with three subplots.
+    Plot the RGB image and Point Cloud in a single figure with two subplots.
 
     Parameters:
     - rgb_img: The RGB image as a (H, W, 3) numpy array.
     - point_cloud: The point cloud as a (N, 3) numpy array.
     - colors: The colors for each point in the point cloud as a (N, 3) numpy array.
     - fig: The matplotlib figure object.
-    - axes: A tuple of matplotlib axes objects (ax_rgb, ax_depth, ax_pointcloud).
+    - axes: A tuple of matplotlib axes objects (ax_rgb, ax_pointcloud).
 
     Returns:
     - None
@@ -188,25 +220,8 @@ if __name__ == '__main__':
     p.loadURDF("plane.urdf")
     p.loadURDF("r2d2.urdf", [0, 0, 1])  # Add an example robot
 
-    # Initialize the plot for real-time display
-    plt.ion()  # Turn on interactive mode
-    fig = plt.figure(figsize=(18, 6))  # Create a wider figure for better layout
-
-    # Create three subplots: RGB, and Point Cloud
-    ax_rgb = fig.add_subplot(1, 2, 1)
-    ax_pointcloud = fig.add_subplot(1, 2, 2, projection='3d')
-    
-    # Set initial titles and labels
-    ax_rgb.set_title("RGB Image")
-    ax_rgb.axis('off')
-
-    ax_pointcloud.set_title("Colored Point Cloud")
-    ax_pointcloud.set_xlabel("X")
-    ax_pointcloud.set_ylabel("Y")
-    ax_pointcloud.set_zlabel("Z")
-
-    # Pack the axes into a tuple for easy passing
-    axes = (ax_rgb, ax_pointcloud)
+    # Initialize the plots for real-time display
+    fig, axes = initialize_plots()
 
     # Camera parameters
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
