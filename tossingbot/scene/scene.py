@@ -1,4 +1,5 @@
 import time
+import random
 import pybullet as p
 import pybullet_data
 
@@ -18,12 +19,17 @@ def setup_workspace(length=0.3, width=0.4, position: list = [0.55, 0.0]):
     
     return box_ids
 
-def setup_objects(n_object=1):
-    # TODO: add multiple objects
-    # Create different objects in the scene
-    sphere_id = create_sphere(position=[0.4, -0.4, 0.02], radius=0.02)
+def setup_objects(workspace_length, workspace_width, workspace_position, n_object=1):
+    margin = 0.05
+    object_ids = []
+    for i in range(n_object):
+        # TODO: add multiple types of object
+        # object_type = random. # 0 box, 1 sphere, ...
+        x = random.uniform(workspace_position[0] - workspace_length / 2 + margin, workspace_position[0] + workspace_length / 2 - margin)
+        y = random.uniform(workspace_position[1] - workspace_width / 2 + margin, workspace_position[1] + workspace_width / 2 - margin)
+    object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02))
 
-    return [sphere_id]
+    return object_ids
 
 def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_cols=3, position=[0.0, 0.0]):
     """
@@ -99,7 +105,8 @@ def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_c
     return box_ids
 
 def setup_scene(workspace_length=0.3, workspace_width=0.4, workspace_position=[0.55, 0],
-                box_length=0.25, box_width=0.15, box_height=0.2, box_n_rows=4, box_n_cols=3, box_position=[1.375, 0.0]):
+                box_length=0.25, box_width=0.15, box_height=0.2, box_n_rows=4, box_n_cols=3, box_position=[1.375, 0.0],
+                n_object=1):
     """
     Set up the simulation scene in PyBullet.
     """
@@ -117,7 +124,9 @@ def setup_scene(workspace_length=0.3, workspace_width=0.4, workspace_position=[0
                                         n_cols=box_n_cols, 
                                         position=box_position)   # The closes box's side is 1 meter awary from the base of robot.
     # Set up objects
-    object_ids = setup_objects()
+    object_ids = setup_objects(workspace_length, workspace_width, workspace_position, n_object=n_object)
+    # Set up camera
+    
     # Set up robot
     robot = UR5Robotiq85((0, 0.0, 0.0), (0, 0, 0), visualize_coordinate_frames=True)
 
