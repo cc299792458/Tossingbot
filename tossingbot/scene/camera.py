@@ -66,51 +66,60 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     - colors: A numpy array of shape (N, 3), where N is the number of points.
               Each color is represented as (r, g, b).
     """
-    
-    # Focal length (in pixels) derived from the field of view
+    # Calculate focal lengths in pixels
     fy = (height / 2.0) / np.tan(np.radians(fov / 2.0))
     fx = fy * aspect
     
-    cx = width / 2.0  # Center of the image width
-    cy = height / 2.0  # Center of the image height
+    # Image center coordinates
+    cx = width / 2.0
+    cy = height / 2.0
 
-    point_cloud = []
-    colors = []
-
-    # Iterate over each pixel in the depth image
-    for v in range(height):
-        for u in range(width):
-            z = depth_img[v, u]
-            if z == 0:  # Ignore invalid depth values (e.g., if depth_img contains 0 for no depth)
-                continue
-            
-            # Convert pixel coordinates (u, v) into 3D camera coordinates (x, y, z)
-            x = (u - cx) / fx * z
-            y = (v - cy) / fy * z
-            point_cloud.append([x, y, -z])
-            
-            # Get the color for the point from the RGB image
-            r, g, b = rgb_img[v, u, :]  # Extract RGB values
-            colors.append([r / 255.0, g / 255.0, b / 255.0])  # Normalize to [0, 1]
-
-    point_cloud = np.array(point_cloud)
-    colors = np.array(colors)
+    # Generate grid of pixel coordinates
+    u = np.arange(width)
+    v = np.arange(height)
+    uu, vv = np.meshgrid(u, v)
+    
+    # Flatten the arrays for vectorized processing
+    uu_flat = uu.flatten()
+    vv_flat = vv.flatten()
+    depth_flat = depth_img.flatten()
+    rgb_flat = rgb_img.reshape(-1, 3)
+    
+    # Create a mask for valid depth values
+    valid_mask = depth_flat > 0
+    
+    # Filter out invalid points
+    u_valid = uu_flat[valid_mask]
+    v_valid = vv_flat[valid_mask]
+    depth_valid = depth_flat[valid_mask]
+    rgb_valid = rgb_flat[valid_mask]
+    
+    # Convert pixel coordinates to camera coordinates
+    x_camera = (u_valid - cx) / fx * depth_valid
+    y_camera = (v_valid - cy) / fy * depth_valid
+    z_camera = -depth_valid  # Invert z-axis to match PyBullet's coordinate system
+    
+    # Stack the camera coordinates to form the point cloud
+    point_cloud = np.stack((x_camera, y_camera, z_camera), axis=1)
+    
+    # Normalize RGB colors to [0, 1]
+    colors = rgb_valid.astype(np.float32) / 255.0
 
     if to_world:
-        # PyBullet's view_matrix is row-major, we need to transpose to get column-major format
+        # Convert view_matrix from row-major to column-major
         view_matrix_np = np.array(view_matrix).reshape(4, 4).T
-
-        # Extract rotation (3x3) and translation (3x1) from the view matrix
+        
+        # Extract rotation matrix and translation vector
         rotation_matrix = view_matrix_np[:3, :3]
         translation_vector = view_matrix_np[:3, 3]
-
+        
         # Invert the rotation matrix
         inv_rotation_matrix = np.linalg.inv(rotation_matrix)
-
+        
         # Invert the translation vector
         inv_translation_vector = -inv_rotation_matrix @ translation_vector
-
-        # Apply rotation and translation to convert to world coordinates
+        
+        # Transform point cloud to world coordinates
         point_cloud = (inv_rotation_matrix @ point_cloud.T).T + inv_translation_vector
 
     return point_cloud, colors
