@@ -24,13 +24,13 @@ if __name__ == '__main__':
 
     # Camera parameters
     cam_target_pos = [*workspace_position, 0.0]
-    cam_distance = 2
+    cam_distance = workspace_width / 2
     width = 64 * 3  # 192x144 resolution
     height = 48 * 3
-    cam_yaw = 0
+    cam_yaw = 90    # TODO: Tune this parameter
     cam_pitch = -90
     cam_roll = 0
-    fov = 45
+    fov = 90
     aspect = 1.33
     near = 0.01
     far = 10.0
@@ -66,17 +66,17 @@ if __name__ == '__main__':
             fov=fov, aspect=aspect, near=near, far=far
         )
 
-        # # Generate point cloud with color
-        # point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
-        #                                                       rgb_img, 
-        #                                                       fov=fov, 
-        #                                                       aspect=aspect, 
-        #                                                       width=width, 
-        #                                                       height=height, 
-        #                                                       view_matrix=view_matrix, 
-        #                                                       to_world=True)
+        # Generate point cloud with color
+        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
+                                                              rgb_img, 
+                                                              fov=fov, 
+                                                              aspect=aspect, 
+                                                              width=width, 
+                                                              height=height, 
+                                                              view_matrix=view_matrix, 
+                                                              to_world=True)
 
-        # # Plot rgbd image and pointcloud
-        # plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes)
+        # Plot rgbd image and pointcloud
+        plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes)
 
     p.disconnect()

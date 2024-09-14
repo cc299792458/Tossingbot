@@ -64,6 +64,10 @@ def capture_rgbd_image(
     # Remove the alpha channel (RGBA -> RGB)
     rgb_img = rgb_img[:, :, :3]  # Keep only the RGB channels, discard Alpha
 
+    # Convert to numpy array
+    rgb_img = np.array(rgb_img)
+    depth_img = np.array(depth_img)
+
     return rgb_img, depth_img, view_matrix
 
 def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, height, view_matrix, to_world=True):
@@ -227,8 +231,8 @@ if __name__ == '__main__':
 
     # Camera parameters
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
-    width, height = 64 * 3, 48 * 3  # 192x144 resolution
-    cam_yaw, cam_pitch, cam_roll = 0, -90, 0
+    width, height = 64 * 4, 64 * 3  # resolution
+    cam_yaw, cam_pitch, cam_roll = 90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
 

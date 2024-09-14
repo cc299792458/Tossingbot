@@ -50,7 +50,7 @@ def setup_objects(workspace_length, workspace_width, workspace_position, n_objec
     :param n_object: Number of objects to place in the workspace.
     :return: List of object IDs.
     """
-    margin = 0.075
+    margin = 0.1
     object_ids = []
     
     for i in range(n_object):
