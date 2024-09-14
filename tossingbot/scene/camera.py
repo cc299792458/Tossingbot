@@ -3,34 +3,18 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+
+from scipy.spatial.transform import Rotation as R
+from tossingbot.scene.objects import create_sphere
 
 def capture_rgbd_image(
     cam_target_pos=[0, 0, 0], cam_distance=2, 
     width=640, height=480,
     cam_yaw=45, cam_pitch=-30, cam_roll=0, 
-    fov=60, aspect=1.0, near=0.1, far=100.0
+    fov=60, aspect=1.0, near=0.01, far=10.0
 ):
     """
     Capture an RGB-D image (RGB and Depth) from the scene using the camera.
-
-    Parameters:
-    - cam_target_pos: List specifying the camera target position [x, y, z].
-    - cam_distance: Distance from the camera to the target position.
-    - width: Width of the captured image (default is 640).
-    - height: Height of the captured image (default is 480).
-    - cam_yaw: Yaw angle (horizontal rotation) of the camera.
-    - cam_pitch: Pitch angle (vertical rotation) of the camera.
-    - cam_roll: Roll angle of the camera.
-    - fov: Field of view of the camera in degrees.
-    - aspect: Aspect ratio of the camera (width/height).
-    - near: Near clipping plane distance.
-    - far: Far clipping plane distance.
-
-    Returns:
-    - rgb_img: The captured RGB image.
-    - real_depth: The corresponding depth image with real-world depth values.
-    - view_matrix: The view matrix for camera-world transformation.
     """
     # Get view and projection matrices
     view_matrix = p.computeViewMatrixFromYawPitchRoll(
@@ -49,7 +33,7 @@ def capture_rgbd_image(
     )
 
     # Get camera image (RGB, depth, segmentation masks)
-    _, _, rgb_img, depth_img, seg_img = p.getCameraImage(
+    _, _, rgb_img, depth_buffer, seg_img = p.getCameraImage(
         width=width,        # Image width
         height=height,      # Image height
         viewMatrix=view_matrix,
@@ -58,69 +42,97 @@ def capture_rgbd_image(
     )
 
     # Convert the depth buffer to real depth values
-    depth_img = far * near / (far - (far - near) * depth_img)  # Depth conversion formula
+    depth_img = far * near / (far - (far - near) * depth_buffer)  # Depth conversion formula
 
     # Remove the alpha channel (RGBA -> RGB)
-    rgb_img = rgb_img[:, :, :3]  # Keep only the RGB channels, discard Alpha
+    rgb_img = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)[:, :, :3]  # Keep only the RGB channels, discard Alpha
 
     return rgb_img, depth_img, view_matrix
 
-def depth_to_point_cloud(depth_img, fov, width, height, near, far, view_matrix, to_world=False):
+def depth_to_point_cloud_with_color(
+    depth_img, rgb_img, fov, aspect, width, height,
+    cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll,
+    to_world=True
+):
     """
-    Convert depth image to a point cloud, either in camera or world coordinates.
-    
+    Convert depth image to a colored point cloud using camera parameters.
+
     Parameters:
     - depth_img: The depth image (real-world depth values).
+    - rgb_img: The RGB image.
     - fov: Field of view of the camera in degrees.
+    - aspect: Aspect ratio of the camera.
     - width: Width of the captured image.
     - height: Height of the captured image.
-    - near: Near clipping plane distance.
-    - far: Far clipping plane distance.
-    - view_matrix: The view matrix for transforming camera to world coordinates.
+    - cam_target_pos: The target position the camera is looking at.
+    - cam_distance: The distance from the camera to the target position.
+    - cam_yaw: Yaw angle of the camera in degrees.
+    - cam_pitch: Pitch angle of the camera in degrees.
+    - cam_roll: Roll angle of the camera in degrees.
     - to_world: If True, transforms the point cloud to world coordinates. Otherwise, stays in camera coordinates.
 
     Returns:
     - point_cloud: A numpy array of shape (N, 3), where N is the number of points.
                    Each point is represented as (x, y, z).
+    - colors: A numpy array of shape (N, 3), where N is the number of points.
+              Each color is represented as (r, g, b).
     """
-    # Calculate the camera intrinsic parameters
+
+    # Focal length (in pixels) derived from the field of view
+    fy = (height / 2.0) / np.tan(np.radians(fov / 2.0))
+    fx = fy * aspect
+
     cx = width / 2.0  # Center of the image width
     cy = height / 2.0  # Center of the image height
-    
-    # Focal length (in pixels) derived from the field of view
-    f = width / (2 * np.tan(np.radians(fov / 2)))
-    
-    point_cloud = []
 
-    # Iterate over each pixel in the depth image
-    for v in range(height):
-        for u in range(width):
-            z = depth_img[v, u]
-            if z == 0:  # Ignore invalid depth values (e.g., if depth_img contains 0 for no depth)
-                continue
-            
-            # Convert pixel coordinates (u, v) into 3D camera coordinates (x, y, z)
-            x = (u - cx) * z / f
-            y = (v - cy) * z / f
-            point_cloud.append([x, y, z])
-    
-    point_cloud = np.array(point_cloud)
+    # Create a grid of (u, v) coordinates
+    u = np.arange(width)
+    v = np.arange(height)
+    uu, vv = np.meshgrid(u, v)
+
+    # Flatten the arrays
+    uu = uu.flatten()
+    vv = vv.flatten()
+    depth = depth_img.flatten()
+    rgb = rgb_img.reshape(-1, 3)
+
+    # Filter out invalid depth values
+    valid = depth > 0
+    uu = uu[valid]
+    vv = vv[valid]
+    depth = depth[valid]
+    rgb = rgb[valid]
+
+    # Compute camera coordinates
+    x = (uu - cx) / fx * depth
+    y = (vv - cy) / fy * depth
+    z = depth
+    points = np.vstack((x, y, z)).T
+
+    # Normalize RGB colors
+    colors = rgb.astype(np.float32) / 255.0
 
     if to_world:
-        # PyBullet's view_matrix is row-major, we need to transpose to get column-major format
-        view_matrix_np = np.array(view_matrix).reshape(4, 4).T
+        R_matrix = R.from_euler('yxz', [cam_yaw, cam_pitch, cam_roll], degrees=True).as_matrix()
 
-        # Extract rotation (3x3) and translation (3x1) from the view matrix
-        rotation_matrix = view_matrix_np[:3, :3]
-        translation_vector = view_matrix_np[:3, 3]
+        # Compute camera position in world coordinates
+        yaw_rad = np.radians(cam_yaw)
+        pitch_rad = np.radians(cam_pitch)
+        roll_rad = np.radians(cam_roll)
 
-        # Invert the rotation matrix
-        inv_rotation_matrix = np.linalg.inv(rotation_matrix)
+        cam_pos_x = cam_target_pos[0] + cam_distance * np.cos(pitch_rad) * np.sin(yaw_rad)
+        cam_pos_y = cam_target_pos[1] + cam_distance * np.cos(pitch_rad) * np.cos(yaw_rad)
+        cam_pos_z = cam_target_pos[2] + cam_distance * np.sin(pitch_rad)
+        T = np.array([cam_pos_x, cam_pos_y, cam_pos_z])
+
+        # Invert rotation and translation to get world transformation
+        R_inv = R_matrix.T
+        T_inv = -R_inv @ T
 
         # Apply rotation and translation to convert to world coordinates
-        point_cloud = (inv_rotation_matrix @ point_cloud.T).T + translation_vector
+        points = (R_inv @ points.T).T + T_inv
 
-    return point_cloud
+    return points, colors
 
 if __name__ == '__main__':
     # Initialize PyBullet simulation
@@ -130,52 +142,98 @@ if __name__ == '__main__':
 
     # Create a plane and a box in the simulation
     p.loadURDF("plane.urdf")
-    p.loadURDF("r2d2.urdf", [0, 0, 1])  # Add an example robot
+    create_sphere()
 
     # Initialize the plot for real-time display
     plt.ion()  # Turn on interactive mode
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))  # Create a figure with two subplots
+    fig = plt.figure(figsize=(12, 6))  # Create a figure
 
-    # Subplot 1: Real-time RGB image
+    # Define camera parameters
+    cam_target_pos = [0, 0, 0.75]
+    cam_distance = 2
+    width, height = 64 * 3, 48 * 3
+    cam_yaw, cam_pitch, cam_roll = 0, -90, 0
+    fov, aspect = 30, 1.33
+    near, far = 0.01, 10.0
+
+    # Capture RGB and Depth images
     rgb_img, depth_img, view_matrix = capture_rgbd_image(
-        cam_target_pos=[0, 0, 0.75], cam_distance=2, 
-        width=640, height=480,
-        cam_yaw=0, cam_pitch=-45, cam_roll=0,
-        fov=45, aspect=1.33, near=0.2, far=5.0
+        cam_target_pos=cam_target_pos, cam_distance=cam_distance, 
+        width=width, height=height,
+        cam_yaw=cam_yaw, cam_pitch=cam_pitch, cam_roll=cam_roll,
+        fov=fov, aspect=aspect, near=near, far=far
     )
     
-    img_plot = ax1.imshow(rgb_img)
-    ax1.set_title("Real-Time RGB Image")
-    ax1.axis('off')
+    # Generate point cloud with color using camera parameters
+    point_cloud, colors = depth_to_point_cloud_with_color(
+        depth_img, 
+        rgb_img, 
+        fov=fov, 
+        aspect=aspect, 
+        width=width, 
+        height=height, 
+        cam_target_pos=cam_target_pos, 
+        cam_distance=cam_distance, 
+        cam_yaw=cam_yaw, 
+        cam_pitch=cam_pitch, 
+        cam_roll=cam_roll, 
+        to_world=True
+    )
 
-    # Subplot 2: 3D point cloud in camera or world coordinates
-    ax2 = fig.add_subplot(122, projection='3d')
-    to_world = True  # Set to True for world coordinates, False for camera coordinates
-    point_cloud = depth_to_point_cloud(depth_img, fov=45, width=640, height=480, near=0.2, far=5.0, view_matrix=view_matrix, to_world=to_world)
-    scatter_plot = ax2.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c=point_cloud[:, 2], cmap='jet', s=1)
-    ax2.set_title("Real-Time Point Cloud")
+    # Create a 3D plot for point cloud visualization
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title("Colored Point Cloud")
+    scatter_plot = ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], 
+                              c=colors, s=1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
 
-    # Update the plots in the simulation loop
+    # Optionally, enable auto-scaling
+    ax.auto_scale_xyz(point_cloud[:,0], point_cloud[:,1], point_cloud[:,2])
+
+    plt.draw()
+    plt.pause(0.001)  # Initial pause to display the plot
+
+    # Update the plot in the simulation loop
     for _ in range(1000):
         p.stepSimulation()
         rgb_img, depth_img, view_matrix = capture_rgbd_image(
-            cam_target_pos=[0, 0, 0.75], cam_distance=2, 
-            width=640, height=480,
-            cam_yaw=0, cam_pitch=-45, cam_roll=0,
-            fov=45, aspect=1.33, near=0.2, far=5.0
-        )  # Capture the RGB-D images with custom parameters
+            cam_target_pos=cam_target_pos, cam_distance=cam_distance, 
+            width=width, height=height,
+            cam_yaw=cam_yaw, cam_pitch=cam_pitch, cam_roll=cam_roll,
+            fov=fov, aspect=aspect, near=near, far=far
+        )
 
-        # Update RGB image plot
-        img_plot.set_data(rgb_img)
+        # Update point cloud with color using camera parameters
+        point_cloud, colors = depth_to_point_cloud_with_color(
+            depth_img, 
+            rgb_img, 
+            fov=fov, 
+            aspect=aspect, 
+            width=width, 
+            height=height, 
+            cam_target_pos=cam_target_pos, 
+            cam_distance=cam_distance, 
+            cam_yaw=cam_yaw, 
+            cam_pitch=cam_pitch, 
+            cam_roll=cam_roll, 
+            to_world=True
+        )
 
-        # Update point cloud plot (in world or camera coordinates)
-        point_cloud = depth_to_point_cloud(depth_img, fov=45, width=640, height=480, near=0.2, far=5.0, view_matrix=view_matrix, to_world=to_world)
-        ax2.clear()  # Clear the previous scatter plot
-        ax2.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c=point_cloud[:, 2], cmap='jet', s=1)
-        ax2.set_title("Real-Time Point Cloud")
+        # Clear and update scatter plot
+        ax.cla()  # Clear the current axes
+        ax.set_title("Colored Point Cloud")
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        scatter_plot = ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], 
+                                  c=colors, s=1)
+        
+        # Dynamically adjust the axes limits based on the point cloud
+        ax.auto_scale_xyz(point_cloud[:,0], point_cloud[:,1], point_cloud[:,2])
 
+        plt.draw()
         plt.pause(0.001)  # Pause briefly to allow the plot to update in real-time
-
-        time.sleep(1. / 240.)
 
     p.disconnect()
