@@ -1,5 +1,9 @@
 import math
+import time
+import numpy as np
 import pybullet as p
+import pybullet_data
+
 from collections import namedtuple
 
 class BaseRobot:
@@ -13,6 +17,7 @@ class BaseRobot:
         """
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
+        self.links = {}  # Store link information
         self.load_robot()
         self.reset()
 
@@ -25,9 +30,11 @@ class BaseRobot:
             self.base_position,
             self.base_orientation_quat,
             useFixedBase=True,
-            flags=p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES | p.URDF_USE_SELF_COLLISION
+            flags=p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
+            # flags=p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES | p.URDF_USE_SELF_COLLISION
         )
         self._parse_joint_information()
+        self._store_link_information()  # Store link information
 
     def _parse_joint_information(self):
         """
@@ -80,6 +87,17 @@ class BaseRobot:
             info.upper_limit - info.lower_limit for info in self.joints if info.controllable
         ][:self.num_arm_dofs]
 
+    def _store_link_information(self):
+        """
+        Store link information in a dictionary.
+        """
+        num_joints = p.getNumJoints(self.robot_id)
+        # Store base link separately
+        self.links[p.getBodyInfo(self.robot_id)[0].decode('utf-8')] = -1
+        for joint_id in range(num_joints):
+            link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
+            self.links[link_name] = joint_id
+
     def reset(self):
         """
         Reset the robot to its initial configuration.
@@ -115,14 +133,14 @@ class BaseRobot:
 
     def inverse_kinematics(self, pose):
         """
-        Calculate inverse kinematics for the given end effector pose.
+        Calculate inverse kinematics for the given tcp pose.
         """
         x, y, z, roll, pitch, yaw = pose
         position = (x, y, z)
         orientation = p.getQuaternionFromEuler((roll, pitch, yaw))
         current_joint_position = self.get_joint_position()
         joint_position = p.calculateInverseKinematics(
-            self.robot_id, self.end_effector_id, position, orientation,
+            self.robot_id, self.tcp_id, position, orientation,
             self.arm_lower_limits, self.arm_upper_limits,
             self.arm_joint_ranges, current_joint_position,
             maxNumIterations=20
@@ -141,20 +159,19 @@ class BaseRobot:
         """
         return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.controllable_joints]
 
-    def get_end_effector_position(self):
+    def get_tcp_position(self):
         """
         Get the current position of the end effector.
         """
-        return p.getLinkState(self.robot_id, self.end_effector_id)[0]
+        return p.getLinkState(self.robot_id, self.tcp_id)[0]
 
 class UR5Robotiq85(BaseRobot):
-    def __init__(self, base_position, base_orientation, visualize_coordinate_frames=False):
+    def __init__(self, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
         self.num_arm_dofs = 6
-        self.initial_position = [
-            -1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001,
-            0.085,
+        self.initial_position = initial_position if initial_position is not None else [
+            0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0, 0.085
         ]
-        self.end_effector_id = 7
+        self.tcp_id = 8
         self.gripper_range = [0, 0.085]
 
         super().__init__(base_position, base_orientation)
@@ -214,7 +231,7 @@ class UR5Robotiq85(BaseRobot):
         Reset the gripper to its open position.
         """
         self.set_gripper_position(self.initial_position[-1])
-        # self.set_gripper_position_target(self.initial_position[-1])
+        self.set_gripper_position_target(self.initial_position[-1])
 
     def open_gripper(self):
         """
@@ -263,49 +280,70 @@ class UR5Robotiq85(BaseRobot):
         """
         Convert gripper open length to joint angle.
         """
-        # return 0.715 - math.asin((open_length - 0.010) / 0.1143)
         return 0.715 - math.asin((open_length - 0.010) / 0.1143)
 
     def visualize_coordinate_frames(self, axis_length=0.1):
         """
-        Draw the coordinate frames for each link in the URDF.
+        Draw the coordinate frames for specified links in the URDF.
 
         Args:
             axis_length (float): The length of the coordinate axes.
         """
-        num_joints = p.getNumJoints(self.robot_id)
-        
-        for joint_id in range(num_joints):
-            # The link's local origin
+        links_to_visualize = ['tcp_link']  # Replace with the link names you want to visualize
+        for link_name in links_to_visualize:
+            link_index = self.links.get(link_name)
+            if link_index is None:
+                print(f"Link {link_name} not found.")
+                continue
             pos = [0, 0, 0]
-            
+
             # Draw the X-axis (red)
             p.addUserDebugLine(
                 pos, 
                 [axis_length, 0, 0], 
                 [1, 0, 0],  # Color: Red
                 parentObjectUniqueId=self.robot_id, 
-                parentLinkIndex=joint_id
+                parentLinkIndex=link_index
             )
-            
+
             # Draw the Y-axis (green)
             p.addUserDebugLine(
                 pos, 
                 [0, axis_length, 0], 
                 [0, 1, 0],  # Color: Green
                 parentObjectUniqueId=self.robot_id, 
-                parentLinkIndex=joint_id
+                parentLinkIndex=link_index
             )
-            
+
             # Draw the Z-axis (blue)
             p.addUserDebugLine(
                 pos, 
                 [0, 0, axis_length], 
                 [0, 0, 1],  # Color: Blue
                 parentObjectUniqueId=self.robot_id, 
-                parentLinkIndex=joint_id
+                parentLinkIndex=link_index
             )
-            
+
             # Optionally, add the link name as text
-            link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
-            p.addUserDebugText(link_name, pos, textColorRGB=[1, 1, 1], parentObjectUniqueId=self.robot_id, parentLinkIndex=joint_id)
+            p.addUserDebugText(
+                link_name, pos, textColorRGB=[1, 1, 1],
+                parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
+            )
+
+if __name__ == '__main__':
+    physics_client_id = p.connect(p.GUI)  
+    p.setAdditionalSearchPath(pybullet_data.getDataPath())
+    p.setGravity(0, 0, -9.8)
+
+    initial_position = [-1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001, 0.085]
+    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), initial_position=initial_position, visualize_coordinate_frames=True)
+    # Add a slider to control the gripper's open length
+    gripper_slider = p.addUserDebugParameter("Gripper Open Length", robot.gripper_range[0], robot.gripper_range[1], robot.initial_position[-1])
+
+    while True:
+        # Read the slider value
+        gripper_length = p.readUserDebugParameter(gripper_slider)
+        # Set the gripper's open length based on the slider value
+        robot.set_gripper_position_target(gripper_length)
+        p.stepSimulation()
+        time.sleep(1./240.)

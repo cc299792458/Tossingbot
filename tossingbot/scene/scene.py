@@ -17,26 +17,27 @@ def setup_workspace(length=0.3, width=0.4, position=[0.55, 0.0]):
     """
     thickness = 0.01
     height = 0.1
+    color = [0.8, 0.8, 0.8, 1.0]
     box_ids = []
     
     # Base of the workspace
     box_ids.append(create_box(half_extents=[length / 2, width / 2, thickness / 2], 
                               position=[position[0], position[1], thickness / 2], 
-                              mass=0, color=[0.2, 0.2, 0.2, 1]))
+                              mass=0, color=color))
     
     # Walls of the workspace
     box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
                               position=[position[0] - length / 2, position[1], height / 2 + thickness], 
-                              mass=0, color=[0.2, 0.2, 0.2, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
                               position=[position[0], position[1] - width / 2, height / 2 + thickness], 
-                              mass=0, color=[0.2, 0.2, 0.2, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
                               position=[position[0] + length / 2, position[1], height / 2 + thickness], 
-                              mass=0, color=[0.2, 0.2, 0.2, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
                               position=[position[0], position[1] + width / 2, height / 2 + thickness], 
-                              mass=0, color=[0.2, 0.2, 0.2, 1]))
+                              mass=0, color=color))
     
     return box_ids
 
@@ -78,6 +79,7 @@ def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_c
     """
     box_ids = []
     divider_thickness = 0.01  # 1 cm thick dividers
+    color = [0.545, 0.271, 0.075, 1.0]
 
     # Calculate the adjusted total size of the grid
     total_length = n_cols * length - 2 * divider_thickness
@@ -90,29 +92,29 @@ def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_c
     # Create outer walls
     box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
                               position=[position[0], y_start + total_width + divider_thickness / 2, height / 2],
-                              mass=0, color=[0.8, 0.8, 0.8, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
                               position=[position[0], y_start - divider_thickness / 2, height / 2],
-                              mass=0, color=[0.8, 0.8, 0.8, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
                               position=[x_start - divider_thickness / 2, position[1], height / 2],
-                              mass=0, color=[0.8, 0.8, 0.8, 1]))
+                              mass=0, color=color))
     box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
                               position=[x_start + total_length + divider_thickness / 2, position[1], height / 2],
-                              mass=0, color=[0.8, 0.8, 0.8, 1]))
+                              mass=0, color=color))
 
     # Create internal dividers
     for i in range(1, n_rows):
         y = y_start + i * width - divider_thickness
         box_ids.append(create_box(half_extents=[total_length / 2, divider_thickness / 2, height / 2],
                                   position=[position[0], y, height / 2],
-                                  mass=0, color=[0.8, 0.8, 0.8, 1]))
+                                  mass=0, color=color))
 
     for j in range(1, n_cols):
         x = x_start + j * length - divider_thickness
         box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
                                   position=[x, position[1], height / 2],
-                                  mass=0, color=[0.8, 0.8, 0.8, 1]))
+                                  mass=0, color=color))
     
     return box_ids
 
@@ -154,7 +156,7 @@ def setup_scene(workspace_length=0.3, workspace_width=0.4, workspace_position=[0
     object_ids = setup_objects(workspace_length, workspace_width, workspace_position, n_object=n_object)
     
     # Set up robot
-    robot = UR5Robotiq85((0, 0.0, 0.0), (0, 0, 0), visualize_coordinate_frames=True)
+    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
 
     return plane_id, workspace_ids, box_ids, object_ids, robot
 

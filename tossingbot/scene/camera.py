@@ -179,7 +179,7 @@ def initialize_plots(figsize=(12, 6)):
 
     return fig, axes
 
-def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes):
+def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim=None, zlim=None):
     """
     Plot the RGB image and Point Cloud in a single figure with two subplots.
 
@@ -209,7 +209,14 @@ def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes):
     ax_pointcloud.set_xlabel("X")
     ax_pointcloud.set_ylabel("Y")
     ax_pointcloud.set_zlabel("Z")
-    # Removed fixed axis limits to prevent incomplete display
+
+    # Set axis limits if provided
+    if xlim is not None:
+        ax_pointcloud.set_xlim(xlim)
+    if ylim is not None:
+        ax_pointcloud.set_ylim(ylim)
+    if zlim is not None:
+        ax_pointcloud.set_zlim(zlim)
 
     # Redraw the figure
     plt.draw()

@@ -561,6 +561,34 @@
     </collision>
   </link>
 
+  <!-- New joint connecting ee_link to tcp_link -->
+  <joint name="tcp_joint" type="fixed">
+    <parent link="ee_link"/>
+    <child link="tcp_link"/>
+    <origin rpy="0 0 0" xyz="0.145 0.0 0.0"/> <!-- Adjust xyz and rpy as needed -->
+  </joint>
+
+  <!-- New tcp_link -->
+  <!-- NOTE: Adding a small visual and collision element to tcp_link to ensure 
+  PyBullet can correctly process and locate this link in the simulation. -->
+  <link name="tcp_link">
+    <visual>
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.0001"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+  </link>
+
   <!--################################################
   ########          Connect Model               #####
   ####################################################-->

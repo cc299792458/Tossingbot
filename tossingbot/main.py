@@ -21,10 +21,15 @@ if __name__ == '__main__':
     box_n_cols = 3
     box_position = [1.375, 0.0]
     n_object = 1
+    workspace_xlim = [workspace_position[0] - workspace_length / 2, workspace_position[0] + workspace_length / 2]
+    workspace_ylim = [workspace_position[1] - workspace_width / 2, workspace_position[1] + workspace_width / 2]
+    workspace_zlim = [0.0, 0.2]
+
+    # Robot parameters
 
     # Camera parameters
     cam_target_pos = [*workspace_position, 0.0]
-    cam_distance = workspace_width / 2
+    cam_distance = workspace_length / 2
     width = 64 * 3  # 192x144 resolution
     height = 48 * 3
     cam_yaw = 90    # TODO: Tune this parameter
@@ -77,6 +82,13 @@ if __name__ == '__main__':
                                                               to_world=True)
 
         # Plot rgbd image and pointcloud
-        plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes)
+        plot_rgb_pointcloud(rgb_img, 
+                            point_cloud, 
+                            colors, 
+                            fig, 
+                            axes, 
+                            xlim=workspace_xlim, 
+                            ylim=workspace_ylim, 
+                            zlim=workspace_zlim)
 
     p.disconnect()
