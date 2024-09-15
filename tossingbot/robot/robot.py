@@ -32,10 +32,9 @@ class BaseRobot:
             self.base_orientation_quat,
             useFixedBase=True,
             flags=p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES
-            # flags=p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES | p.URDF_USE_SELF_COLLISION
         )
         self._parse_joint_information()
-        self._store_link_information()  # Store link information
+        self._store_link_information()
 
     def _parse_joint_information(self):
         """
@@ -77,23 +76,15 @@ class BaseRobot:
 
         assert len(self.controllable_joints) >= self.num_arm_dofs
         self.arm_controllable_joints = self.controllable_joints[:self.num_arm_dofs]
-
-        self.arm_lower_limits = [
-            info.lower_limit for info in self.joints if info.controllable
-        ][:self.num_arm_dofs]
-        self.arm_upper_limits = [
-            info.upper_limit for info in self.joints if info.controllable
-        ][:self.num_arm_dofs]
-        self.arm_joint_ranges = [
-            info.upper_limit - info.lower_limit for info in self.joints if info.controllable
-        ][:self.num_arm_dofs]
+        self.arm_lower_limits = [info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
+        self.arm_upper_limits = [info.upper_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
+        self.arm_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
 
     def _store_link_information(self):
         """
         Store link information in a dictionary.
         """
         num_joints = p.getNumJoints(self.robot_id)
-        # Store base link separately
         self.links[p.getBodyInfo(self.robot_id)[0].decode('utf-8')] = -1
         for joint_id in range(num_joints):
             link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
@@ -135,27 +126,41 @@ class BaseRobot:
 
     def set_tcp_pose(self, tcp_pose):
         """
-        Set the tcp pose
+        Set the TCP pose.
+        
+        Args:
+            tcp_pose (list): A list containing the TCP pose with [position, orientation].
+                             - position: [x, y, z]
+                             - orientation: [qx, qy, qz, qw]
         """
         joint_position = self.inverse_kinematics(pose=tcp_pose)
         self.set_arm_joint_position(position=joint_position)
 
     def set_tcp_pose_target(self, target_tcp_pose):
         """
-        Set the target tcp pose
+        Set the target TCP pose.
+        
+        Args:
+            target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
+                                    - position: [x, y, z]
+                                    - orientation: [qx, qy, qz, qw]
         """
         target_joint_position = self.inverse_kinematics(pose=target_tcp_pose)
         self.set_arm_joint_position_target(target_position=target_joint_position)
 
     def inverse_kinematics(self, pose):
         """
-        Calculate inverse kinematics for the given tcp pose.
+        Calculate inverse kinematics for the given TCP pose.
+        
+        Args:
+            pose (list): A list containing the pose [position, orientation].
+                         - position: [x, y, z]
+                         - orientation: [qx, qy, qz, qw]
+                         
+        Returns:
+            list: Joint positions to achieve the desired pose.
         """
-        # x, y, z, roll, pitch, yaw = pose
-        x, y, z, wx, wy, wz, ww = pose
-        position = (x, y, z)
-        orientation = (wx, wy, wz, ww)
-        # orientation = p.getQuaternionFromEuler((roll, pitch, yaw))
+        position, orientation = pose
         current_joint_position = self.get_joint_position()
         joint_position = p.calculateInverseKinematics(
             self.robot_id, self.tcp_id, position, orientation,
@@ -168,90 +173,70 @@ class BaseRobot:
     def get_joint_position(self):
         """
         Get the current position of the joints.
+        
+        Returns:
+            list: Current positions of all controllable joints.
         """
         return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.controllable_joints]
-
-    def get_joint_velocity(self):
-        """
-        Get the current velocity of the joints.
-        """
-        return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.controllable_joints]
 
     def get_tcp_pose(self):
         """
         Get the current pose of the TCP.
         
         Returns:
-            list: A list containing the TCP position [x, y, z] and orientation as a quaternion [x, y, z, w].
+            list: A list containing the TCP pose with [position, orientation].
+                  - position: [x, y, z]
+                  - orientation: [qx, qy, qz, qw]
         """
-        # Get the link state which returns position and orientation (as a quaternion)
         link_state = p.getLinkState(self.robot_id, self.tcp_id)
-        position = link_state[0]  # [x, y, z]
-        orientation = link_state[1]  # Quaternion [x, y, z, w]
+        position = link_state[0]
+        orientation = link_state[1]
+        return [position, orientation]
 
-        # Combine the position and orientation into a single list
-        tcp_pose = list(position) + list(orientation)
-
-        return tcp_pose
-    
     def _pose_distance(self, pose1, pose2):
         """
         Calculate the distance between two poses.
         
         Args:
-            pose1 (list): The first pose as a list [x, y, z, qx, qy, qz, qw].
-            pose2 (list): The second pose as a list [x, y, z, qx, qy, qz, qw].
+            pose1 (list): First pose as [position, orientation].
+            pose2 (list): Second pose as [position, orientation].
             
         Returns:
             dict: A dictionary containing 'position_distance' and 'orientation_distance'.
         """
-        # Calculate the position distance (Euclidean distance)
-        position1 = np.array(pose1[:3])
-        position2 = np.array(pose2[:3])
+        position1 = np.array(pose1[0])
+        position2 = np.array(pose2[0])
         position_distance = np.linalg.norm(position1 - position2)
 
-        # Calculate the orientation distance using quaternion
-        quat1 = np.array(pose1[3:])
-        quat2 = np.array(pose2[3:])
-        
-        # Compute the dot product of two quaternions
+        quat1 = np.array(pose1[1])
+        quat2 = np.array(pose2[1])
         dot_product = np.dot(quat1, quat2)
-
-        # Clamp the dot product to avoid numerical errors that can cause issues with arccos
         dot_product = np.clip(dot_product, -1.0, 1.0)
-        
-        # Calculate the angle between the quaternions
         orientation_distance = 2 * np.arccos(np.abs(dot_product))
 
         return {
             'position_distance': position_distance,
             'orientation_distance': orientation_distance
         }
-    
+
     def is_tcp_reached_target(self, target_pose, position_tolerance=0.01, orientation_tolerance=0.01):
         """
         Check if the TCP has reached the target pose.
         
         Args:
-            current_pose (list): The current pose of the TCP [x, y, z, qx, qy, qz, qw].
-            target_pose (list): The target pose of the TCP [x, y, z, qx, qy, qz, qw].
-            position_tolerance (float): The tolerance for position difference.
-            orientation_tolerance (float): The tolerance for orientation difference in radians.
+            target_pose (list): Target pose as [position, orientation].
+            position_tolerance (float): Tolerance for position difference.
+            orientation_tolerance (float): Tolerance for orientation difference in radians.
             
         Returns:
             bool: True if the TCP is within the specified tolerances, False otherwise.
         """
-        # Calculate the distance between the current pose and the target pose
         current_pose = self.get_tcp_pose()
         distances = self._pose_distance(current_pose, target_pose)
-        
-        # Check if both the position and orientation distances are within the specified tolerances
-        if (distances['position_distance'] <= position_tolerance and
-            distances['orientation_distance'] <= orientation_tolerance):
-            return True
-        else:
-            return False
-
+        return (
+            distances['position_distance'] <= position_tolerance and
+            distances['orientation_distance'] <= orientation_tolerance
+        )
 
 class UR5Robotiq85(BaseRobot):
     def __init__(self, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
@@ -260,7 +245,6 @@ class UR5Robotiq85(BaseRobot):
             0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0, 0.085
         ]
         self.gripper_range = [0, 0.085]
-        
         super().__init__(base_position, base_orientation)
         if visualize_coordinate_frames:
             self.visualize_coordinate_frames()
@@ -313,7 +297,13 @@ class UR5Robotiq85(BaseRobot):
         self.reset_gripper()
 
     def grasp(self, tcp_target_pose):
-        pose_over_target = tcp_target_pose[:2] + [0.365] + tcp_target_pose[3:]
+        """
+        Perform a grasping action at the target TCP pose.
+        
+        Args:
+            tcp_target_pose (list): Target TCP pose as [position, orientation].
+        """
+        pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
         while not self.is_tcp_reached_target(target_pose=pose_over_target):
             self.set_tcp_pose_target(pose_over_target)
         self.open_gripper()
@@ -322,9 +312,6 @@ class UR5Robotiq85(BaseRobot):
         self.close_gripper()
         while not self.is_tcp_reached_target(target_pose=pose_over_target):
             self.set_tcp_pose_target(pose_over_target)
-        # # Check if the grasp is success
-        # self.get_gripper_position()
-
 
     def reset_gripper(self):
         """
@@ -437,17 +424,10 @@ if __name__ == '__main__':
 
     initial_position = [-1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001, 0.085]
     robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), initial_position=initial_position, visualize_coordinate_frames=True)
-    # Add a slider to control the gripper's open length
-    # gripper_slider = p.addUserDebugParameter("Gripper Open Length", robot.gripper_range[0], robot.gripper_range[1], robot.initial_position[-1])
 
-    # create_box(half_extents=[0.02, 0.02, 0.02], position=[0.5, 0.0, 0.1])
+    tcp_target_pose = [[0.5, 0.0, 0.2], [0.0, 0.0, 0.0, 1.0]]
+    robot.grasp(tcp_target_pose=tcp_target_pose)
 
     while True:
-        # Read the slider value
-        # gripper_length = p.readUserDebugParameter(gripper_slider)
-        # Set the gripper's open length based on the slider value
-        # robot.set_gripper_position_target(gripper_length)
-        tcp_target_pose = [0.5, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0]
-        robot.grasp(tcp_target_pose=tcp_target_pose)
         p.stepSimulation()
         time.sleep(1./240.)
