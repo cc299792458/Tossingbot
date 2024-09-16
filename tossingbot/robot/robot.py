@@ -5,7 +5,7 @@ import pybullet as p
 import pybullet_data
 
 from collections import namedtuple
-from tossingbot.scene.objects import create_box
+from tossingbot.scene.objects import create_sphere, create_plane
 
 class BaseRobot:
     """
@@ -148,27 +148,34 @@ class BaseRobot:
         target_joint_position = self.inverse_kinematics(pose=target_tcp_pose)
         self.set_arm_joint_position_target(target_position=target_joint_position)
 
-    def inverse_kinematics(self, pose):
+    def inverse_kinematics(self, pose, rest_pose=None):
         """
         Calculate inverse kinematics for the given TCP pose.
         
         Args:
             pose (list): A list containing the pose [position, orientation].
-                         - position: [x, y, z]
-                         - orientation: [qx, qy, qz, qw]
-                         
+                        - position: [x, y, z]
+                        - orientation: [qx, qy, qz, qw]
+                        
         Returns:
             list: Joint positions to achieve the desired pose.
         """
-        position, orientation = pose
-        current_joint_position = self.get_joint_position()
+        position, orientation = pose    
+        # Use rest pose if provided; otherwise, use current joint positions
+        if rest_pose is None:
+            rest_pose = self.get_joint_position()
         joint_position = p.calculateInverseKinematics(
-            self.robot_id, self.tcp_id, position, orientation,
-            self.arm_lower_limits, self.arm_upper_limits,
-            self.arm_joint_ranges, current_joint_position,
-            maxNumIterations=20
+            bodyUniqueId=self.robot_id,
+            endEffectorLinkIndex=self.tcp_id,
+            targetPosition=position,
+            targetOrientation=orientation,
+            lowerLimits=self.arm_lower_limits,
+            upperLimits=self.arm_upper_limits,
+            jointRanges=self.arm_joint_ranges,
+            restPoses=rest_pose,
+            maxNumIterations=100
         )
-        return joint_position
+        return joint_position[:self.num_arm_dofs]
 
     def get_joint_position(self):
         """
@@ -177,7 +184,7 @@ class BaseRobot:
         Returns:
             list: Current positions of all controllable joints.
         """
-        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.controllable_joints]
+        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints]
 
     def get_tcp_pose(self):
         """
@@ -244,7 +251,7 @@ class UR5Robotiq85(BaseRobot):
         self.initial_position = initial_position if initial_position is not None else [
             0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0, 0.085
         ]
-        self.gripper_range = [0, 0.085]
+        self.gripper_range = [0.0, 0.085]
         super().__init__(base_position, base_orientation)
         if visualize_coordinate_frames:
             self.visualize_coordinate_frames()
@@ -296,22 +303,115 @@ class UR5Robotiq85(BaseRobot):
         super().reset()
         self.reset_gripper()
 
+    def _is_gripper_open(self, tolerance=1e-2):
+        """
+        Check if the gripper is fully open.
+        
+        Args:
+            tolerance (float): The tolerance value for checking if the gripper is open.
+            
+        Returns:
+            bool: True if the gripper is open, False otherwise.
+        """
+        position_condition = abs(self.get_gripper_position() - self._length_to_angle(self.gripper_range[1])) < tolerance
+        return position_condition
+    
+    def _is_gripper_closed(self, tolerance=1e-2):
+        """
+        Check if the gripper is fully closed.
+        
+        Args:
+            tolerance (float): The tolerance value for checking if the gripper is closed.
+            
+        Returns:
+            bool: True if the gripper is closed, False otherwise.
+        """
+        position_condition = abs(self.get_gripper_position() - self._length_to_angle(self.gripper_range[0])) < tolerance
+        return position_condition
+    
+    def _is_gripper_stopped(self, velocity_tolerance=5e-3, check_steps=10):
+        """
+        Check if the gripper has stopped moving within a certain number of steps.
+        
+        Args:
+            velocity_tolerance (float): The tolerance for the gripper velocity.
+            check_steps (int): Number of steps to check for stopping.
+            
+        Returns:
+            bool: True if the gripper has stopped, False otherwise.
+        """
+        # Initialize or reset the stopping check
+        if not hasattr(self, '_gripper_stop_count'):
+            self._gripper_stop_count = 0
+            self._gripper_stopped = False
+
+        # Check if the gripper velocity is below the tolerance
+        if abs(self.get_gripper_velocity()) < velocity_tolerance:
+            # If gripper velocity is low, increment the stop count
+            self._gripper_stop_count += 1
+            # Check if the stop count has reached the required number of steps
+            if self._gripper_stop_count >= check_steps:
+                self._gripper_stopped = True
+        else:
+            # If gripper velocity is not low, reset the stop count
+            self._gripper_stop_count = 0
+            self._gripper_stopped = False
+
+        return self._gripper_stopped
+
+    
     def grasp(self, tcp_target_pose):
         """
-        Perform a grasping action at the target TCP pose.
+        Perform a grasping action at the target TCP pose in a step-by-step manner.
         
         Args:
             tcp_target_pose (list): Target TCP pose as [position, orientation].
+        
+        Returns:
+            bool: True if the grasping process is completed, False otherwise.
         """
-        pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
-        while not self.is_tcp_reached_target(target_pose=pose_over_target):
-            self.set_tcp_pose_target(pose_over_target)
-        self.open_gripper()
-        while not self.is_tcp_reached_target(target_pose=tcp_target_pose):
-            self.set_tcp_pose_target(tcp_target_pose)
-        self.close_gripper()
-        while not self.is_tcp_reached_target(target_pose=pose_over_target):
-            self.set_tcp_pose_target(pose_over_target)
+        # Initialize or continue the grasping process
+        if not hasattr(self, '_grasp_step'):
+            self._grasp_step = 0  # Initialize the grasp step
+            self.pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
+            self.tcp_target_pose = tcp_target_pose
+
+        if self._grasp_step == 0:
+            # Move to a position over the target
+            if not self.is_tcp_reached_target(target_pose=self.pose_over_target):
+                self.set_tcp_pose_target(self.pose_over_target)
+            else:
+                self._grasp_step = 1  # Move to the next step
+        elif self._grasp_step == 1:
+            # Open the gripper
+            self.open_gripper()
+            # Check if the gripper has stopped moving
+            if self._is_gripper_stopped():
+                self._grasp_step = 2  # Move to the next step
+        elif self._grasp_step == 2:
+            # Move to the target position
+            if not self.is_tcp_reached_target(target_pose=self.tcp_target_pose):
+                self.set_tcp_pose_target(self.tcp_target_pose)
+            else:
+                self._grasp_step = 3  # Move to the next step
+        elif self._grasp_step == 3:
+            # Close the gripper
+            self.close_gripper()
+            # Check if the gripper has stopped moving
+            if self._is_gripper_stopped():
+                self._grasp_step = 4  # Move to the next step
+        elif self._grasp_step == 4:
+            # Move back to the position over the target
+            if not self.is_tcp_reached_target(target_pose=self.pose_over_target):
+                self.set_tcp_pose_target(self.pose_over_target)
+            else:
+                del self._grasp_step  # Grasping process is complete, cleanup
+                return True  # Grasping process is complete
+
+        return False  # Grasping process is not complete
+    
+    def tossing(self):
+        pass
 
     def reset_gripper(self):
         """
@@ -369,6 +469,12 @@ class UR5Robotiq85(BaseRobot):
         """
         return 0.715 - math.asin((open_length - 0.010) / 0.1143)
 
+    def _angle_to_length(self, joint_angle):
+        """
+        Convert gripper joint angle to open length.
+        """
+        return 0.010 + 0.1143 * math.sin(0.715 - joint_angle)
+
     def visualize_coordinate_frames(self, axis_length=0.1):
         """
         Draw the coordinate frames for specified links in the URDF.
@@ -422,12 +528,15 @@ if __name__ == '__main__':
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.8)
 
-    initial_position = [-1.569/2, -1.545, 1.344, -1.371, -1.571, 0.001, 0.085]
-    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), initial_position=initial_position, visualize_coordinate_frames=True)
-
-    tcp_target_pose = [[0.5, 0.0, 0.2], [0.0, 0.0, 0.0, 1.0]]
-    robot.grasp(tcp_target_pose=tcp_target_pose)
+    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
+    create_plane()
+    sphere_position = [0.4, -0.4, 0.04]    
+    create_sphere(radius=0.02, position=sphere_position)
+    tcp_target_pose = [sphere_position, [-0.0006627706705588098, 0.707114179457306, -0.0007339598331235209, 0.7070986913072476]]
+    completed = False
 
     while True:
+        if not completed:
+            completed = robot.grasp(tcp_target_pose=tcp_target_pose)
         p.stepSimulation()
         time.sleep(1./240.)
