@@ -5,6 +5,7 @@ import pybullet as p
 import pybullet_data
 
 from collections import namedtuple
+from scipy.interpolate import CubicSpline
 from tossingbot.scene.objects import create_sphere, create_plane
 
 class BaseRobot:
@@ -352,6 +353,7 @@ class UR5Robotiq85(BaseRobot):
             # Check if the stop count has reached the required number of steps
             if self._gripper_stop_count >= check_steps:
                 self._gripper_stopped = True
+                del self._gripper_stop_count
         else:
             # If gripper velocity is not low, reset the stop count
             self._gripper_stop_count = 0
@@ -359,13 +361,87 @@ class UR5Robotiq85(BaseRobot):
 
         return self._gripper_stopped
 
+    def _generate_smooth_subtargets(self, start_pose, end_pose, num_subtargets):
+        """
+        Generate smooth intermediate subtargets using cubic spline interpolation.
+        
+        Args:
+            start_pose (list): Start pose as [position, orientation].
+            end_pose (list): End pose as [position, orientation].
+            num_subtargets (int): Number of subtargets to generate.
+            
+        Returns:
+            list: List of smooth subtargets [position, orientation].
+        """
+        times = np.linspace(0, 1, num_subtargets + 2)  # Including start and end
+        cs_x = CubicSpline([0, 1], [start_pose[0][0], end_pose[0][0]])
+        cs_y = CubicSpline([0, 1], [start_pose[0][1], end_pose[0][1]])
+        cs_z = CubicSpline([0, 1], [start_pose[0][2], end_pose[0][2]])
+
+        cs_qx = CubicSpline([0, 1], [start_pose[1][0], end_pose[1][0]])
+        cs_qy = CubicSpline([0, 1], [start_pose[1][1], end_pose[1][1]])
+        cs_qz = CubicSpline([0, 1], [start_pose[1][2], end_pose[1][2]])
+        cs_qw = CubicSpline([0, 1], [start_pose[1][3], end_pose[1][3]])
+
+        subtargets = []
+        for t in times[1:-1]:  # Exclude start and end
+            intermediate_position = [
+                cs_x(t),
+                cs_y(t),
+                cs_z(t)
+            ]
+            intermediate_orientation = [
+                cs_qx(t),
+                cs_qy(t),
+                cs_qz(t),
+                cs_qw(t)
+            ]
+            subtargets.append([intermediate_position, intermediate_orientation])
+        subtargets.append(end_pose)
+        return subtargets
     
-    def grasp(self, tcp_target_pose):
+    def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, position_tolerance=0.01, orientation_tolerance=0.01):
+        """
+        Generate subtargets to move the TCP to the target pose smoothly.
+        
+        Args:
+            target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
+            num_subtargets (int): The number of subtargets to create along the trajectory.
+            position_tolerance (float): Tolerance for position to switch to the next subtarget.
+            orientation_tolerance (float): Tolerance for orientation to switch to the next subtarget.
+        """
+        # Generate subtargets only if they haven't been created yet
+        if not hasattr(self, '_subtargets') or not self._subtargets:
+            self._subtargets = self._generate_smooth_subtargets(self.get_tcp_pose(), target_tcp_pose, num_subtargets)
+            self._subtarget_index = 0  # Initialize the subtarget index here
+
+        # Move through subtargets
+        if self._subtarget_index < len(self._subtargets):
+            current_subtarget = self._subtargets[self._subtarget_index]
+
+            # Check if the TCP has reached the current subtarget
+            if not self.is_tcp_reached_target(target_pose=current_subtarget, position_tolerance=position_tolerance, orientation_tolerance=orientation_tolerance):
+                # Move to the current subtarget
+                self.set_tcp_pose_target(current_subtarget)
+            else:
+                # Only move to the next subtarget if the current one is reached
+                self._subtarget_index += 1
+
+        # Check if the entire trajectory is completed
+        if self._subtarget_index >= len(self._subtargets):
+            del self._subtargets  # Clear subtargets
+            del self._subtarget_index
+            return True  # Trajectory is completed
+
+        return False  # Trajectory is not completed
+    
+    def grasp(self, tcp_target_pose, num_subtargets=10):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
         Args:
             tcp_target_pose (list): Target TCP pose as [position, orientation].
+            num_subtargets (int): Number of subtargets for smooth trajectory.
         
         Returns:
             bool: True if the grasping process is completed, False otherwise.
@@ -377,9 +453,10 @@ class UR5Robotiq85(BaseRobot):
             self.tcp_target_pose = tcp_target_pose
 
         if self._grasp_step == 0:
-            # Move to a position over the target
-            if not self.is_tcp_reached_target(target_pose=self.pose_over_target):
-                self.set_tcp_pose_target(self.pose_over_target)
+            # Move to a position over the target with subtargets
+            if not self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets):
+                # Wait until the trajectory is completed
+                return False
             else:
                 self._grasp_step = 1  # Move to the next step
         elif self._grasp_step == 1:
@@ -389,9 +466,10 @@ class UR5Robotiq85(BaseRobot):
             if self._is_gripper_stopped():
                 self._grasp_step = 2  # Move to the next step
         elif self._grasp_step == 2:
-            # Move to the target position
-            if not self.is_tcp_reached_target(target_pose=self.tcp_target_pose):
-                self.set_tcp_pose_target(self.tcp_target_pose)
+            # Move to the target position with subtargets
+            if not self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets):
+                # Wait until the trajectory is completed
+                return False
             else:
                 self._grasp_step = 3  # Move to the next step
         elif self._grasp_step == 3:
@@ -401,15 +479,16 @@ class UR5Robotiq85(BaseRobot):
             if self._is_gripper_stopped():
                 self._grasp_step = 4  # Move to the next step
         elif self._grasp_step == 4:
-            # Move back to the position over the target
-            if not self.is_tcp_reached_target(target_pose=self.pose_over_target):
-                self.set_tcp_pose_target(self.pose_over_target)
+            # Move back to the position over the target with subtargets
+            if not self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets):
+                # Wait until the trajectory is completed
+                return False
             else:
                 del self._grasp_step  # Grasping process is complete, cleanup
                 return True  # Grasping process is complete
 
         return False  # Grasping process is not complete
-    
+
     def tossing(self):
         pass
 
