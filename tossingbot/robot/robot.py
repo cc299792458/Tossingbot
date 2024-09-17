@@ -7,7 +7,7 @@ import pybullet_data
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
 from tossingbot.utils.math_utils import slerp
-from tossingbot.scene.objects import create_sphere, create_plane
+from tossingbot.scene.objects import create_box, create_plane
 
 class BaseRobot:
     """
@@ -92,6 +92,8 @@ class BaseRobot:
         for joint_id in range(num_joints):
             link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
             self.links[link_name] = joint_id
+            # Change friction parameter
+            p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
         self.tcp_id = self.links.get('tcp_link')
 
     def reset(self):
@@ -125,7 +127,7 @@ class BaseRobot:
             p.setJointMotorControl2(
                 self.robot_id, joint_id, p.POSITION_CONTROL, pos,
                 force=self.joints[joint_id].max_force,
-                maxVelocity=self.joints[joint_id].max_velocity
+                maxVelocity=self.joints[joint_id].max_velocity,
             )
 
     def set_tcp_pose(self, tcp_pose):
@@ -333,12 +335,12 @@ class UR5Robotiq85(BaseRobot):
         position_condition = abs(self.get_gripper_position() - self._length_to_angle(self.gripper_range[0])) < tolerance
         return position_condition
 
-    def _is_gripper_stopped(self, velocity_tolerance=5e-3, check_steps=10):
+    def _is_gripper_stopped(self, position_change_tolerance=2e-3, check_steps=10):
         """
-        Check if the gripper has stopped moving within a certain number of steps.
+        Check if the gripper has stopped moving based on position change within a certain number of steps.
         
         Args:
-            velocity_tolerance (float): The tolerance for the gripper velocity.
+            position_change_tolerance (float): The tolerance for the gripper position change.
             check_steps (int): Number of steps to check for stopping.
             
         Returns:
@@ -348,17 +350,25 @@ class UR5Robotiq85(BaseRobot):
         if not hasattr(self, '_gripper_stop_count'):
             self._gripper_stop_count = 0
             self._gripper_stopped = False
+            self._previous_gripper_position = self.get_gripper_position()  # Initialize previous position
 
-        # Check if the gripper velocity is below the tolerance
-        if abs(self.get_gripper_velocity()) < velocity_tolerance:
-            # If gripper velocity is low, increment the stop count
+        current_position = self.get_gripper_position()
+        position_change = abs(current_position - self._previous_gripper_position)
+
+        # Update the previous position for the next check
+        self._previous_gripper_position = current_position
+
+        # Check if the gripper position change is below the tolerance
+        if position_change < position_change_tolerance:
+            # If conditions are met, increment the stop count
             self._gripper_stop_count += 1
             # Check if the stop count has reached the required number of steps
             if self._gripper_stop_count >= check_steps:
                 self._gripper_stopped = True
                 del self._gripper_stop_count
+                del self._previous_gripper_position
         else:
-            # If gripper velocity is not low, reset the stop count
+            # If conditions are not met, reset the stop count
             self._gripper_stop_count = 0
             self._gripper_stopped = False
 
@@ -498,7 +508,7 @@ class UR5Robotiq85(BaseRobot):
             # Move back to the position over the target with subtargets
             if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
                                        position_tolerance=0.05, orientation_tolerance=0.05, 
-                                       final_position_tolerance=0.05, final_orientation_tolerance=0.05):
+                                       final_position_tolerance=0.01, final_orientation_tolerance=0.01):
                 del self._grasp_step  # Grasping process is complete, cleanup
                 return True  # Grasping process is complete
             return False  # Grasping not yet complete
@@ -542,8 +552,8 @@ class UR5Robotiq85(BaseRobot):
         p.setJointMotorControl2(
             self.robot_id, self.mimic_parent_id, p.POSITION_CONTROL,
             targetPosition=open_angle,
-            force=self.joints[self.mimic_parent_id].max_force,
-            maxVelocity=self.joints[self.mimic_parent_id].max_velocity
+            force=self.joints[self.mimic_parent_id].max_force / 15,     # The defalut value is too large
+            maxVelocity=self.joints[self.mimic_parent_id].max_velocity / 15     # The same
         )
 
     def get_gripper_position(self):
@@ -625,13 +635,14 @@ if __name__ == '__main__':
 
     robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
     create_plane()
-    sphere_position = [0.4, -0.4, 0.04]    
-    create_sphere(radius=0.02, position=sphere_position)
-    tcp_target_pose = [sphere_position, [-0.0006627706705588098, 0.707114179457306, -0.0007339598331235209, 0.7070986913072476]]
+    box_position = [0.4, -0.4, 0.03]    
+    box_id = create_box(half_extents=[0.03, 0.03, 0.03], position=box_position, mass=0.1)
+    p.changeDynamics(box_id, -1, lateralFriction=1.0, rollingFriction=0.01)
+    tcp_target_pose = [box_position, [-0.0006627706705588098, 0.707114179457306, -0.0007339598331235209, 0.7070986913072476]]
     completed = False
 
     while True:
         if not completed:
-            completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=20)
+            completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
         p.stepSimulation()
         time.sleep(1./240.)
