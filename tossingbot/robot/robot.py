@@ -405,11 +405,12 @@ class UR5Robotiq85(BaseRobot):
         return subtargets
 
     def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, 
-                           position_tolerance=0.05, orientation_tolerance=0.05, 
-                           final_position_tolerance=0.01, final_orientation_tolerance=0.01):
+                        position_tolerance=0.05, orientation_tolerance=0.05, 
+                        final_position_tolerance=0.01, final_orientation_tolerance=0.01,
+                        stop_pose_change_tolerance=1e-6, stop_check_steps=10):
         """
         Generate subtargets to move the TCP to the target pose smoothly.
-        
+
         Args:
             target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
             num_subtargets (int): The number of subtargets to create along the trajectory.
@@ -417,7 +418,9 @@ class UR5Robotiq85(BaseRobot):
             orientation_tolerance (float): Tolerance for orientation to switch to the next subtarget.
             final_position_tolerance (float): Tolerance for final position.
             final_orientation_tolerance (float): Tolerance for final orientation.
-        
+            stop_pose_change_tolerance (float): Pose change threshold to consider the robot stopped.
+            stop_check_steps (int): Number of steps to confirm the robot has stopped.
+            
         Returns:
             bool: True if the trajectory is completed, False otherwise.
         """
@@ -425,6 +428,27 @@ class UR5Robotiq85(BaseRobot):
         if not hasattr(self, '_subtargets') or not self._subtargets:
             self._subtargets = self._generate_smooth_subtargets(self.get_tcp_pose(), target_tcp_pose, num_subtargets)
             self._subtarget_index = 0  # Initialize the subtarget index here
+            self.stopped_counter = 0  # Initialize stopping counter
+            self.previous_tcp_pose = self.get_tcp_pose()  # Initialize previous TCP pose
+
+        # Check if the TCP has stopped
+        current_tcp_pose = self.get_tcp_pose()
+        position_change = np.linalg.norm(np.array(current_tcp_pose[0]) - np.array(self.previous_tcp_pose[0]))
+        orientation_change = np.abs(np.dot(current_tcp_pose[1], self.previous_tcp_pose[1]) - 1)  # Quaternion difference
+
+        # Update the previous TCP pose
+        self.previous_tcp_pose = current_tcp_pose
+
+        # Check if the changes are below the threshold
+        if position_change < stop_pose_change_tolerance and orientation_change < stop_pose_change_tolerance:
+            self.stopped_counter += 1
+        else:
+            self.stopped_counter = 0  # Reset if TCP starts moving again
+
+        # If TCP is considered stopped, move to the next subtarget or finish
+        if self.stopped_counter > stop_check_steps:
+            self.stopped_counter = 0  # Reset counter for the next check
+            self._subtarget_index += 1
 
         # Move through subtargets
         if self._subtarget_index <= len(self._subtargets):
