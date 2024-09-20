@@ -19,3 +19,29 @@ def slerp(q0, q1, t_array):
         (np.sin(t * theta_0) / sin_theta_0) * q1
         for t in t_array
     ])
+
+def pose_distance(pose1, pose2):
+    """
+    Calculate the distance between two poses.
+    
+    Args:
+        pose1 (list): First pose as [position, orientation].
+        pose2 (list): Second pose as [position, orientation].
+        
+    Returns:
+        dict: A dictionary containing 'position_distance' and 'orientation_distance'.
+    """
+    position1 = np.array(pose1[0])
+    position2 = np.array(pose2[0])
+    position_distance = np.linalg.norm(position1 - position2)
+
+    quat1 = np.array(pose1[1])
+    quat2 = np.array(pose2[1])
+    dot_product = np.dot(quat1, quat2)
+    dot_product = np.clip(dot_product, -1.0, 1.0)
+    orientation_distance = 2 * np.arccos(np.abs(dot_product))
+
+    return {
+        'position_distance': position_distance,
+        'orientation_distance': orientation_distance
+    }

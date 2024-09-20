@@ -1,12 +1,9 @@
-import math
-import time
 import numpy as np
 import pybullet as p
-import pybullet_data
 
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-from tossingbot.envs.pybullet.utils.math_utils import slerp
+from tossingbot.envs.pybullet.utils.math_utils import slerp, pose_distance
 
 class BaseRobot:
     """
@@ -438,40 +435,58 @@ class BaseRobot:
             bool: True if the TCP is within the specified tolerances, False otherwise.
         """
         current_pose = self.get_tcp_pose()
-        distances = self._pose_distance(current_pose, target_pose)
+        distances = pose_distance(current_pose, target_pose)
         return (
             distances['position_distance'] <= position_tolerance and
             distances['orientation_distance'] <= orientation_tolerance
         )
-
-    def _pose_distance(self, pose1, pose2):
-        """
-        Calculate the distance between two poses.
-        
-        Args:
-            pose1 (list): First pose as [position, orientation].
-            pose2 (list): Second pose as [position, orientation].
-            
-        Returns:
-            dict: A dictionary containing 'position_distance' and 'orientation_distance'.
-        """
-        position1 = np.array(pose1[0])
-        position2 = np.array(pose2[0])
-        position_distance = np.linalg.norm(position1 - position2)
-
-        quat1 = np.array(pose1[1])
-        quat2 = np.array(pose2[1])
-        dot_product = np.dot(quat1, quat2)
-        dot_product = np.clip(dot_product, -1.0, 1.0)
-        orientation_distance = 2 * np.arccos(np.abs(dot_product))
-
-        return {
-            'position_distance': position_distance,
-            'orientation_distance': orientation_distance
-        }
     
-    def throw(self, tcp_target_pose, tcp_target_velocity):
-        raise NotImplementedError
+    def throw(self, tcp_target_pose, tcp_target_velocity, num_subtargets=10):
+        """
+        Perform a throwing action at the target TCP pose with a specific velocity.
+
+        Args:
+            tcp_target_pose (list): Target TCP pose as [position, orientation].
+            tcp_target_velocity (list): Target velocity for the TCP.
+            num_subtargets (int): Number of subtargets for smooth trajectory.
+        
+        Returns:
+            bool: True if the throwing process is completed, False otherwise.
+        """
+        # Initialize or continue the throwing process
+        if not hasattr(self, '_throw_step'):
+            self._throw_step = 0  # Initialize the throw step
+            self.tcp_target_pose = tcp_target_pose
+            self.tcp_target_velocity = tcp_target_velocity
+
+        if self._throw_step == 0:
+            # Move to the target pose with subtargets
+            if self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets, 
+                                    position_tolerance=0.05, orientation_tolerance=0.05, 
+                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
+                self._throw_step = 1  # Move to the next step
+            return False  # Throwing not yet complete
+
+        elif self._throw_step == 1:
+            # Apply velocity to the TCP
+            p.setJointMotorControlArray(
+                self.robot_id, self.arm_controllable_joints,
+                p.VELOCITY_CONTROL,
+                targetVelocities=self.tcp_target_velocity,
+                forces=[joint.max_force for joint in self.joints if joint.controllable]
+            )
+            self._throw_step = 2  # Move to the next step
+            return False  # Throwing not yet complete
+
+        elif self._throw_step == 2:
+            # Open the gripper to release the object
+            self.open_gripper()
+            if self._is_gripper_stopped():
+                del self._throw_step  # Throwing process is complete, cleanup
+                return True  # Throwing process is complete
+            return False  # Throwing not yet complete
+
+        return False  # Throwing process is not complete
 
     ############### visualization ###############
     def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):
