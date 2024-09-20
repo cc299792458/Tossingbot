@@ -13,7 +13,7 @@ class BaseRobot:
     The base class for robots
     """
 
-    def __init__(self, base_position, base_orientation, robot_type='ur5'):
+    def __init__(self, base_position, base_orientation, robot_type='ur5_robotiq85'):
         """
         Initialize the robot with its base position, orientation, and type.
         """
@@ -21,13 +21,14 @@ class BaseRobot:
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
         self.links = {}  # Store link information
         self.robot_type = robot_type
+        assert robot_type in ['ur5_robotiq85', 'panda'], "robot_type must be 'ur5_robotiq85' or 'panda'"
         # Set the number of DOFs based on the robot type
-        if robot_type == 'ur5':
-            self.num_arm_dofs = 6
-        elif robot_type == 'panda':
-            self.num_arm_dofs = 7
-        else:
-            raise ValueError(f"Unknown robot type: {robot_type}")
+        # if robot_type == 'ur5_robotiq85':
+        #     self.num_arm_dofs = 6
+        # elif robot_type == 'panda':
+        #     self.num_arm_dofs = 7
+        # else:
+        #     raise ValueError(f"Unknown robot type: {robot_type}")
         self.load_robot()
         self.reset()
 
@@ -35,12 +36,11 @@ class BaseRobot:
         """
         Load the robot URDF and parse joint information.
         """
-        if self.robot_type == 'ur5':
+        if self.robot_type == 'ur5_robotiq85':
             urdf_path = './assets/urdf/ur5_robotiq_85.urdf'
             use_fixed_base = True
         elif self.robot_type == 'panda':
-            p.setAdditionalSearchPath(pybullet_data.getDataPath())
-            urdf_path = 'franka_panda/panda.urdf'
+            urdf_path = './assets/urdf/panda.urdf'
             use_fixed_base = True
         else:
             raise ValueError(f"Unknown robot type: {self.robot_type}")
@@ -108,16 +108,14 @@ class BaseRobot:
         for joint_id in range(num_joints):
             link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
             self.links[link_name] = joint_id
-            # Change friction parameter
-            p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
+            # # Change friction parameter
+            # p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
         
         # Set TCP link based on robot type
-        if self.robot_type == 'ur5':
-            self.tcp_id = self.links.get('tcp_link', -1)  # 'tcp_link' should be in the UR5 URDF
+        if self.robot_type == 'ur5_robotiq85':
+            self.tcp_id = self.links.get('tcp_link', -1)  # 'tcp_link' should be in the UR5-Robotiq85 URDF
         elif self.robot_type == 'panda':
-            # Use 'panda_hand' for the Panda robot
-            # Alternative options could include 'panda_link8' if the URDF uses that instead
-            self.tcp_id = self.links.get('panda_hand', self.links.get('panda_link8', -1))
+            self.tcp_id = self.links.get('panda_grasptarget', -1)
 
         assert self.tcp_id != -1, "TCP link not found for the robot"
 
@@ -131,9 +129,8 @@ class BaseRobot:
         """
         Reset the arm to its initial position.
         """
-        if hasattr(self, 'initial_position'):
-            self.set_arm_joint_position(self.initial_position[0:6])
-            self.set_arm_joint_position_target(self.initial_position[0:6])
+        self.set_arm_joint_position(self.initial_position[0:self.num_arm_dofs])
+        self.set_arm_joint_position_target(self.initial_position[0:self.num_arm_dofs])
 
     def set_arm_joint_position(self, position):
         """
@@ -443,6 +440,60 @@ class BaseRobot:
             'position_distance': position_distance,
             'orientation_distance': orientation_distance
         }
+
+    def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):
+        """
+        Draw the coordinate frames for specified links in the URDF.
+
+        Args:
+            axis_length (float): The length of the coordinate axes.
+            links_to_visualize (list or None): A list of link names to visualize. 
+                                            If None, visualizes all links.
+        """
+        # If no specific links are provided, visualize all links
+        if links_to_visualize is None:
+            links_to_visualize = list(self.links.keys())
+        
+        for link_name in links_to_visualize:
+            link_index = self.links.get(link_name)
+            if link_index is None:
+                print(f"Link {link_name} not found.")
+                continue
+            pos = [0, 0, 0]
+
+            # Draw the X-axis (red)
+            p.addUserDebugLine(
+                pos, 
+                [axis_length, 0, 0], 
+                [1, 0, 0],  # Color: Red
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=link_index
+            )
+
+            # Draw the Y-axis (green)
+            p.addUserDebugLine(
+                pos, 
+                [0, axis_length, 0], 
+                [0, 1, 0],  # Color: Green
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=link_index
+            )
+
+            # Draw the Z-axis (blue)
+            p.addUserDebugLine(
+                pos, 
+                [0, 0, axis_length], 
+                [0, 0, 1],  # Color: Blue
+                parentObjectUniqueId=self.robot_id, 
+                parentLinkIndex=link_index
+            )
+
+            # Optionally, add the link name as text
+            p.addUserDebugText(
+                link_name, pos, textColorRGB=[1, 1, 1],
+                parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
+            )
+
 
     # Other placeholder methods for gripper controls, e.g., open_gripper, close_gripper
 

@@ -7,10 +7,10 @@ import pybullet_data
 from tossingbot.envs.pybullet.robot.base_robot import BaseRobot
 from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_plane
 
-class UR5Robotiq85(BaseRobot):
+class Panda(BaseRobot):
     def __init__(self, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
         """
-        Initialize the UR5-Robotiq85 robot with default or custom initial joint positions.
+        Initialize the Panda robot with default or custom initial joint positions.
 
         Args:
             base_position (tuple): The position of the robot's base.
@@ -19,55 +19,29 @@ class UR5Robotiq85(BaseRobot):
                                              Defaults to a preset neutral pose if None.
             visualize_coordinate_frames (bool): If True, visualizes the coordinate frames for the robot.
         """
-        self.num_arm_dofs = 6  # Already initialized in BaseRobot, but kept here for clarity
-        self.initial_position = initial_position if initial_position is not None else [
-            0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0,  # Joints
-            0.085   # Gripper (open)
+        self.num_arm_dofs = 7
+        self.num_gripper_dofs = 2
+
+        # Default joint and gripper positions (in radians)
+        self.initial_position = initial_position if initial_position else [
+            0.0, -np.pi / 4, 0.0, -np.pi, 0.0, np.pi * 3 / 4, np.pi / 4,  # Joints
+            0.04, 0.04  # Gripper (open)
         ]
-        self.gripper_range = [0.0, 0.085]
-        super().__init__(base_position, base_orientation, robot_type='ur5')
+
+        self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
+
+        super().__init__(base_position, base_orientation, robot_type='panda')
+
         if visualize_coordinate_frames:
-            self.visualize_coordinate_frames()
+            self.visualize_coordinate_frames(links_to_visualize=['panda_grasptarget'])
 
-    def load_robot(self):
-        """
-        Load the URDF and set up mimic joints for the gripper.
-        """
-        super().load_robot()
-        self._setup_mimic_joints()
-
-    def _setup_mimic_joints(self):
-        """
-        Set up mimic joints for the gripper.
-        """
-        parent_joint_name = 'finger_joint'
-        child_joint_multipliers = {
-            'right_outer_knuckle_joint': 1,
-            'left_inner_knuckle_joint': 1,
-            'right_inner_knuckle_joint': 1,
-            'left_inner_finger_joint': -1,
-            'right_inner_finger_joint': -1
-        }
-        self.mimic_parent_id = next(
-            joint.id for joint in self.joints if joint.name == parent_joint_name
-        )
-        self.mimic_child_multiplier = {
-            joint.id: child_joint_multipliers[joint.name] for joint in self.joints
-            if joint.name in child_joint_multipliers
-        }
-
-        for joint_id, multiplier in self.mimic_child_multiplier.items():
-            constraint = p.createConstraint(
-                self.robot_id, self.mimic_parent_id,
-                self.robot_id, joint_id,
-                jointType=p.JOINT_GEAR,
-                jointAxis=[0, 1, 0],
-                parentFramePosition=[0, 0, 0],
-                childFramePosition=[0, 0, 0]
-            )
-            p.changeConstraint(
-                constraint, gearRatio=-multiplier, maxForce=100, erp=1
-            )
+    def _parse_joint_information(self):
+        super()._parse_joint_information()
+        
+        self.gripper_controllable_joints = self.controllable_joints[self.num_arm_dofs:]
+        self.gripper_lower_limits = [info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
+        self.gripper_upper_limits = [info.upper_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
+        self.gripper_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
 
     def reset(self):
         """
@@ -145,8 +119,8 @@ class UR5Robotiq85(BaseRobot):
         """
         Reset the gripper to its open position.
         """
-        self.set_gripper_position(self.initial_position[-1])
-        self.set_gripper_position_target(self.initial_position[-1])
+        self.set_gripper_position(self.initial_position[self.num_arm_dofs:])
+        self.set_gripper_position_target(self.initial_position[self.num_arm_dofs:])
 
     def open_gripper(self):
         """
@@ -160,50 +134,46 @@ class UR5Robotiq85(BaseRobot):
         """
         self.set_gripper_position_target(self.gripper_range[0])
 
-    def set_gripper_position(self, open_length):
+    def set_gripper_position(self, position):
         """
         Set the gripper's position by calculating the corresponding joint angle.
         """
-        open_angle = self._length_to_angle(open_length)
-        p.resetJointState(self.robot_id, self.mimic_parent_id, open_angle)
+        assert len(position) == self.num_gripper_dofs, "Position length mismatch"
+        for joint_id, pos in zip(self.gripper_controllable_joints, position):
+            p.resetJointState(self.robot_id, joint_id, pos)
 
-    def set_gripper_position_target(self, open_length):
+    def set_gripper_position_target(self, target_position):
         """
         Set the target gripper position by calculating the corresponding joint angle.
         """
-        open_angle = self._length_to_angle(open_length)
-        p.setJointMotorControl2(
-            self.robot_id, self.mimic_parent_id, p.POSITION_CONTROL,
-            targetPosition=open_angle,
-            force=self.joints[self.mimic_parent_id].max_force / 15,     # The default value is too large
-            maxVelocity=self.joints[self.mimic_parent_id].max_velocity / 15     # The same
-        )
+        assert len(target_position) == self.num_gripper_dofs, "Target position length mismatch"
+        for joint_id, target_pos in zip(self.gripper_controllable_joints, target_position):
+            p.setJointMotorControl2(
+                self.robot_id, joint_id, p.POSITION_CONTROL,
+                targetPosition=target_pos,
+                force=self.joints[joint_id].max_force,
+                maxVelocity=self.joints[joint_id].max_velocity
+            )
 
     def get_gripper_position(self):
         """
-        Get the current position of the gripper.
+        Get the individual positions of the gripper fingers.
         """
-        return p.getJointState(self.robot_id, self.mimic_parent_id)[0]
+        joint_states = p.getJointStates(self.robot_id, self.gripper_controllable_joints)
+        finger1_position = joint_states[0][0]
+        finger2_position = joint_states[1][0]
+        
+        # Return both finger positions as a tuple
+        return finger1_position, finger2_position
 
-    def _length_to_angle(self, open_length):
-        """
-        Convert gripper open length to joint angle.
-        """
-        return 0.715 - math.asin((open_length - 0.010) / 0.1143)
-
-    def _angle_to_length(self, joint_angle):
-        """
-        Convert gripper joint angle to open length.
-        """
-        return 0.010 + 0.1143 * math.sin(0.715 - joint_angle)
 
 if __name__ == '__main__':
     physics_client_id = p.connect(p.GUI)  
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.8)
 
-    # Create UR5 robot
-    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
+    # Create Panda robot
+    robot = Panda((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
     create_plane()
     position = [0.4, -0.4, 0.03]    
     box_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.1)
@@ -212,7 +182,7 @@ if __name__ == '__main__':
     completed = False
 
     while True:
-        if not completed:
-            completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
+        # if not completed:
+        #     completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
         p.stepSimulation()
         time.sleep(1./240.)
