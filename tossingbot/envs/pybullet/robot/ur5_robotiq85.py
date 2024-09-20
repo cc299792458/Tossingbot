@@ -25,10 +25,11 @@ class UR5Robotiq85(BaseRobot):
             0.085   # Gripper (open)
         ]
         self.gripper_range = [0.0, 0.085]
-        super().__init__(base_position, base_orientation, robot_type='ur5')
+        super().__init__(base_position, base_orientation, robot_type='ur5_robotiq85')
         if visualize_coordinate_frames:
-            self.visualize_coordinate_frames()
+            self.visualize_coordinate_frames(links_to_visualize=['tcp_link'])
 
+    ############### load robot ###############
     def load_robot(self):
         """
         Load the URDF and set up mimic joints for the gripper.
@@ -69,12 +70,43 @@ class UR5Robotiq85(BaseRobot):
                 constraint, gearRatio=-multiplier, maxForce=100, erp=1
             )
 
-    def reset(self):
+    ############### gripper ###############
+    def set_gripper_position(self, open_length):
         """
-        Reset the robot and gripper to the initial state.
+        Set the gripper's position by calculating the corresponding joint angle.
         """
-        super().reset()
-        self.reset_gripper()
+        open_angle = self._length_to_angle(open_length)
+        p.resetJointState(self.robot_id, self.mimic_parent_id, open_angle)
+
+    def set_gripper_position_target(self, open_length):
+        """
+        Set the target gripper position by calculating the corresponding joint angle.
+        """
+        open_angle = self._length_to_angle(open_length)
+        p.setJointMotorControl2(
+            self.robot_id, self.mimic_parent_id, p.POSITION_CONTROL,
+            targetPosition=open_angle,
+            force=self.joints[self.mimic_parent_id].max_force / 15,     # The default value is too large
+            maxVelocity=self.joints[self.mimic_parent_id].max_velocity / 15     # The same
+        )
+
+    def get_gripper_position(self):
+        """
+        Get the current position of the gripper.
+        """
+        return p.getJointState(self.robot_id, self.mimic_parent_id)[0]
+    
+    def open_gripper(self):
+        """
+        Open the gripper.
+        """
+        self.set_gripper_position_target(self.gripper_range[1])
+
+    def close_gripper(self):
+        """
+        Close the gripper.
+        """
+        self.set_gripper_position_target(self.gripper_range[0])
 
     def _is_gripper_open(self, tolerance=1e-2):
         """
@@ -140,50 +172,6 @@ class UR5Robotiq85(BaseRobot):
             self._gripper_stopped = False
 
         return self._gripper_stopped
-
-    def reset_gripper(self):
-        """
-        Reset the gripper to its open position.
-        """
-        self.set_gripper_position(self.initial_position[-1])
-        self.set_gripper_position_target(self.initial_position[-1])
-
-    def open_gripper(self):
-        """
-        Open the gripper.
-        """
-        self.set_gripper_position_target(self.gripper_range[1])
-
-    def close_gripper(self):
-        """
-        Close the gripper.
-        """
-        self.set_gripper_position_target(self.gripper_range[0])
-
-    def set_gripper_position(self, open_length):
-        """
-        Set the gripper's position by calculating the corresponding joint angle.
-        """
-        open_angle = self._length_to_angle(open_length)
-        p.resetJointState(self.robot_id, self.mimic_parent_id, open_angle)
-
-    def set_gripper_position_target(self, open_length):
-        """
-        Set the target gripper position by calculating the corresponding joint angle.
-        """
-        open_angle = self._length_to_angle(open_length)
-        p.setJointMotorControl2(
-            self.robot_id, self.mimic_parent_id, p.POSITION_CONTROL,
-            targetPosition=open_angle,
-            force=self.joints[self.mimic_parent_id].max_force / 15,     # The default value is too large
-            maxVelocity=self.joints[self.mimic_parent_id].max_velocity / 15     # The same
-        )
-
-    def get_gripper_position(self):
-        """
-        Get the current position of the gripper.
-        """
-        return p.getJointState(self.robot_id, self.mimic_parent_id)[0]
 
     def _length_to_angle(self, open_length):
         """

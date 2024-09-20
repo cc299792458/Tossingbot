@@ -33,7 +33,7 @@ class Panda(BaseRobot):
         super().__init__(base_position, base_orientation, robot_type='panda')
 
         if visualize_coordinate_frames:
-            self.visualize_coordinate_frames(links_to_visualize=['panda_grasptarget'])
+            self.visualize_coordinate_frames(links_to_visualize=['tcp_link'])
 
     def _parse_joint_information(self):
         super()._parse_joint_information()
@@ -43,97 +43,7 @@ class Panda(BaseRobot):
         self.gripper_upper_limits = [info.upper_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
         self.gripper_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
 
-    def reset(self):
-        """
-        Reset the robot and gripper to the initial state.
-        """
-        super().reset()
-        self.reset_gripper()
-
-    def _is_gripper_open(self, tolerance=1e-2):
-        """
-        Check if the gripper is fully open.
-        
-        Args:
-            tolerance (float): The tolerance value for checking if the gripper is open.
-            
-        Returns:
-            bool: True if the gripper is open, False otherwise.
-        """
-        position_condition = abs(self.get_gripper_position() - self._length_to_angle(self.gripper_range[1])) < tolerance
-        return position_condition
-
-    def _is_gripper_closed(self, tolerance=1e-2):
-        """
-        Check if the gripper is fully closed.
-        
-        Args:
-            tolerance (float): The tolerance value for checking if the gripper is closed.
-            
-        Returns:
-            bool: True if the gripper is closed, False otherwise.
-        """
-        position_condition = abs(self.get_gripper_position() - self._length_to_angle(self.gripper_range[0])) < tolerance
-        return position_condition
-
-    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=10):
-        """
-        Check if the gripper has stopped moving based on position change within a certain number of steps.
-        
-        Args:
-            position_change_tolerance (float): The tolerance for the gripper position change.
-            check_steps (int): Number of steps to check for stopping.
-            
-        Returns:
-            bool: True if the gripper has stopped, False otherwise.
-        """
-        # Initialize or reset the stopping check
-        if not hasattr(self, '_gripper_stop_count'):
-            self._gripper_stop_count = 0
-            self._gripper_stopped = False
-            self._previous_gripper_position = self.get_gripper_position()  # Initialize previous position
-
-        current_position = self.get_gripper_position()
-        position_change = abs(current_position - self._previous_gripper_position)
-
-        # Update the previous position for the next check
-        self._previous_gripper_position = current_position
-
-        # Check if the gripper position change is below the tolerance
-        if position_change < position_change_tolerance:
-            # If conditions are met, increment the stop count
-            self._gripper_stop_count += 1
-            # Check if the stop count has reached the required number of steps
-            if self._gripper_stop_count >= check_steps:
-                self._gripper_stopped = True
-                del self._gripper_stop_count
-                del self._previous_gripper_position
-        else:
-            # If conditions are not met, reset the stop count
-            self._gripper_stop_count = 0
-            self._gripper_stopped = False
-
-        return self._gripper_stopped
-
-    def reset_gripper(self):
-        """
-        Reset the gripper to its open position.
-        """
-        self.set_gripper_position(self.initial_position[self.num_arm_dofs:])
-        self.set_gripper_position_target(self.initial_position[self.num_arm_dofs:])
-
-    def open_gripper(self):
-        """
-        Open the gripper.
-        """
-        self.set_gripper_position_target(self.gripper_range[1])
-
-    def close_gripper(self):
-        """
-        Close the gripper.
-        """
-        self.set_gripper_position_target(self.gripper_range[0])
-
+    ################## gripper #################
     def set_gripper_position(self, position):
         """
         Set the gripper's position by calculating the corresponding joint angle.
@@ -165,7 +75,83 @@ class Panda(BaseRobot):
         
         # Return both finger positions as a tuple
         return finger1_position, finger2_position
+    
+    def open_gripper(self):
+        """
+        Open the gripper.
+        """
+        self.set_gripper_position_target([self.gripper_range[1], self.gripper_range[1]])
 
+    def close_gripper(self):
+        """
+        Close the gripper.
+        """
+        self.set_gripper_position_target([self.gripper_range[0], self.gripper_range[0]])
+
+    def _is_gripper_open(self, tolerance=1e-2):
+        """
+        Check if the gripper is fully open.
+        
+        Args:
+            tolerance (float): The tolerance value for checking if the gripper is open.
+            
+        Returns:
+            bool: True if the gripper is open, False otherwise.
+        """
+        position_condition = max(self.gripper_range[1] - self.get_gripper_position()[0], self.gripper_range[1] - self.get_gripper_position()[1]) < tolerance
+        return position_condition
+
+    def _is_gripper_closed(self, tolerance=5e-3):
+        """
+        Check if the gripper is fully closed.
+        
+        Args:
+            tolerance (float): The tolerance value for checking if the gripper is closed.
+            
+        Returns:
+            bool: True if the gripper is closed, False otherwise.
+        """
+        position_condition = max(self.get_gripper_position()[0] - self.gripper_range[0], self.get_gripper_position()[1] - self.gripper_range[0]) < tolerance
+        return position_condition
+
+    def _is_gripper_stopped(self, position_change_tolerance=5e-5, check_steps=10):
+        """
+        Check if the gripper has stopped moving based on position change within a certain number of steps.
+        
+        Args:
+            position_change_tolerance (float): The tolerance for the gripper position change.
+            check_steps (int): Number of steps to check for stopping.
+            
+        Returns:
+            bool: True if the gripper has stopped, False otherwise.
+        """
+        # Initialize or reset the stopping check
+        if not hasattr(self, '_gripper_stop_count'):
+            self._gripper_stop_count = 0
+            self._gripper_stopped = False
+            self._previous_gripper_position = self.get_gripper_position()  # Initialize previous position
+
+        current_position = self.get_gripper_position()
+        position_change = max(current_position[0] - self._previous_gripper_position[0], current_position[1] - self._previous_gripper_position[1])
+
+        # Update the previous position for the next check
+        self._previous_gripper_position = current_position
+
+        # Check if the gripper position change is below the tolerance
+        if position_change < position_change_tolerance:
+            # If conditions are met, increment the stop count
+            self._gripper_stop_count += 1
+            # Check if the stop count has reached the required number of steps
+            if self._gripper_stop_count >= check_steps:
+                self._gripper_stopped = True
+                del self._gripper_stop_count
+                del self._previous_gripper_position
+        else:
+            # If conditions are not met, reset the stop count
+            self._gripper_stop_count = 0
+            self._gripper_stopped = False
+
+        return self._gripper_stopped
 
 if __name__ == '__main__':
     physics_client_id = p.connect(p.GUI)  
@@ -175,14 +161,14 @@ if __name__ == '__main__':
     # Create Panda robot
     robot = Panda((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
     create_plane()
-    position = [0.4, -0.4, 0.03]    
+    position = [0.4, 0.4, 0.03]    
     box_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.1)
     p.changeDynamics(box_id, -1, lateralFriction=1.0, rollingFriction=0.01)
-    tcp_target_pose = [position, [-0.0006627706705588098, 0.707114179457306, -0.0007339598331235209, 0.7070986913072476]]
+    tcp_target_pose = [position, [1.0, 0.0, 0.0, 0.0]]
     completed = False
 
     while True:
-        # if not completed:
-        #     completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
+        if not completed:
+            completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
         p.stepSimulation()
         time.sleep(1./240.)

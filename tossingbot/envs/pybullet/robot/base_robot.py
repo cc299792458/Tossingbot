@@ -22,16 +22,10 @@ class BaseRobot:
         self.links = {}  # Store link information
         self.robot_type = robot_type
         assert robot_type in ['ur5_robotiq85', 'panda'], "robot_type must be 'ur5_robotiq85' or 'panda'"
-        # Set the number of DOFs based on the robot type
-        # if robot_type == 'ur5_robotiq85':
-        #     self.num_arm_dofs = 6
-        # elif robot_type == 'panda':
-        #     self.num_arm_dofs = 7
-        # else:
-        #     raise ValueError(f"Unknown robot type: {robot_type}")
         self.load_robot()
         self.reset()
 
+    ###############  load robot ###############
     def load_robot(self):
         """
         Load the robot URDF and parse joint information.
@@ -113,17 +107,19 @@ class BaseRobot:
         
         # Set TCP link based on robot type
         if self.robot_type == 'ur5_robotiq85':
-            self.tcp_id = self.links.get('tcp_link', -1)  # 'tcp_link' should be in the UR5-Robotiq85 URDF
+            self.tcp_id = self.links.get('tcp_link', -1)
         elif self.robot_type == 'panda':
-            self.tcp_id = self.links.get('panda_grasptarget', -1)
+            self.tcp_id = self.links.get('tcp_link', -1)
 
         assert self.tcp_id != -1, "TCP link not found for the robot"
 
+    ############### reset robot ###############
     def reset(self):
         """
         Reset the robot to its initial configuration.
         """
         self.reset_arm()
+        self.reset_gripper()
 
     def reset_arm(self):
         """
@@ -132,6 +128,14 @@ class BaseRobot:
         self.set_arm_joint_position(self.initial_position[0:self.num_arm_dofs])
         self.set_arm_joint_position_target(self.initial_position[0:self.num_arm_dofs])
 
+    def reset_gripper(self):
+        """
+        Reset the gripper to its open position.
+        """
+        self.set_gripper_position(self.initial_position[self.num_arm_dofs:])
+        self.set_gripper_position_target(self.initial_position[self.num_arm_dofs:])
+
+    ############### set and get arm position ###############
     def set_arm_joint_position(self, position):
         """
         Set the position for the arm joints.
@@ -152,6 +156,16 @@ class BaseRobot:
                 maxVelocity=self.joints[joint_id].max_velocity,
             )
 
+    def get_arm_joint_position(self):
+        """
+        Get the current position of the arm joints.
+        
+        Returns:
+            list: Current positions of arm controllable joints.
+        """
+        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints]
+
+    ############### set tcp pose, get tcp pose, and inverse kinematics ###############
     def set_tcp_pose(self, tcp_pose):
         """
         Set the TCP pose.
@@ -176,6 +190,20 @@ class BaseRobot:
         target_joint_position = self.inverse_kinematics(pose=target_tcp_pose)
         self.set_arm_joint_position_target(target_position=target_joint_position)
 
+    def get_tcp_pose(self):
+        """
+        Get the current pose of the TCP.
+        
+        Returns:
+            list: A list containing the TCP pose with [position, orientation].
+                  - position: [x, y, z]
+                  - orientation: [qx, qy, qz, qw]
+        """
+        link_state = p.getLinkState(self.robot_id, self.tcp_id)
+        position = link_state[0]
+        orientation = link_state[1]
+        return [position, orientation]
+
     def inverse_kinematics(self, pose, rest_pose=None):
         """
         Calculate inverse kinematics for the given TCP pose.
@@ -191,7 +219,7 @@ class BaseRobot:
         position, orientation = pose    
         # Use rest pose if provided; otherwise, use current joint positions
         if rest_pose is None:
-            rest_pose = self.get_joint_position()
+            rest_pose = self.get_arm_joint_position()
         joint_position = p.calculateInverseKinematics(
             bodyUniqueId=self.robot_id,
             endEffectorLinkIndex=self.tcp_id,
@@ -205,29 +233,7 @@ class BaseRobot:
         )
         return joint_position[:self.num_arm_dofs]
 
-    def get_joint_position(self):
-        """
-        Get the current position of the joints.
-        
-        Returns:
-            list: Current positions of all controllable joints.
-        """
-        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints]
-
-    def get_tcp_pose(self):
-        """
-        Get the current pose of the TCP.
-        
-        Returns:
-            list: A list containing the TCP pose with [position, orientation].
-                  - position: [x, y, z]
-                  - orientation: [qx, qy, qz, qw]
-        """
-        link_state = p.getLinkState(self.robot_id, self.tcp_id)
-        position = link_state[0]
-        orientation = link_state[1]
-        return [position, orientation]
-
+    ############### grasp and throw motion primitives ###############
     def grasp(self, tcp_target_pose, num_subtargets=10):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
@@ -287,9 +293,6 @@ class BaseRobot:
             return False  # Grasping not yet complete
 
         return False  # Grasping process is not complete
-
-    # Placeholder for other methods like open_gripper, close_gripper, set_tcp_trajectory, etc.
-    # Define these methods in subclasses like UR5Robotiq85 or PandaRobot.
 
     def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, 
                         position_tolerance=0.05, orientation_tolerance=0.05, 
@@ -441,6 +444,7 @@ class BaseRobot:
             'orientation_distance': orientation_distance
         }
 
+    ############### visualization ###############
     def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):
         """
         Draw the coordinate frames for specified links in the URDF.
@@ -493,7 +497,3 @@ class BaseRobot:
                 link_name, pos, textColorRGB=[1, 1, 1],
                 parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
             )
-
-
-    # Other placeholder methods for gripper controls, e.g., open_gripper, close_gripper
-
