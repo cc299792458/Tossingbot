@@ -469,6 +469,9 @@ class BaseRobot:
             'position_distance': position_distance,
             'orientation_distance': orientation_distance
         }
+    
+    def throw(self):
+        raise NotImplementedError
 
     ############### visualization ###############
     def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):
