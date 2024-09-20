@@ -5,7 +5,7 @@ import pybullet as p
 import pybullet_data
 
 from tossingbot.envs.pybullet.robot.base_robot import BaseRobot
-from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_plane
+from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_sphere, create_plane
 
 class Panda(BaseRobot):
     def __init__(self, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
@@ -114,7 +114,7 @@ class Panda(BaseRobot):
         position_condition = max(self.get_gripper_position()[0] - self.gripper_range[0], self.get_gripper_position()[1] - self.gripper_range[0]) < tolerance
         return position_condition
 
-    def _is_gripper_stopped(self, position_change_tolerance=5e-5, check_steps=10):
+    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=10):
         """
         Check if the gripper has stopped moving based on position change within a certain number of steps.
         
@@ -132,7 +132,7 @@ class Panda(BaseRobot):
             self._previous_gripper_position = self.get_gripper_position()  # Initialize previous position
 
         current_position = self.get_gripper_position()
-        position_change = max(current_position[0] - self._previous_gripper_position[0], current_position[1] - self._previous_gripper_position[1])
+        position_change = max(abs(current_position[0] - self._previous_gripper_position[0]), abs(current_position[1] - self._previous_gripper_position[1]))
 
         # Update the previous position for the next check
         self._previous_gripper_position = current_position
@@ -161,9 +161,10 @@ if __name__ == '__main__':
     # Create Panda robot
     robot = Panda((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
     create_plane()
-    position = [0.4, 0.4, 0.03]    
-    box_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.1)
-    p.changeDynamics(box_id, -1, lateralFriction=1.0, rollingFriction=0.01)
+    position = [0.3, -0.3, 0.03]    
+    # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
+    object_id = create_sphere(radius=0.02, position=position, mass=0.2)
+    p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
     tcp_target_pose = [position, [1.0, 0.0, 0.0, 0.0]]
     completed = False
 

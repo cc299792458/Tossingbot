@@ -470,7 +470,7 @@ class BaseRobot:
             'orientation_distance': orientation_distance
         }
     
-    def throw(self):
+    def throw(self, tcp_target_pose, tcp_target_velocity):
         raise NotImplementedError
 
     ############### visualization ###############
