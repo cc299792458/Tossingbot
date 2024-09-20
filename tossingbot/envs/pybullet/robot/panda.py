@@ -88,7 +88,7 @@ class Panda(BaseRobot):
         """
         self.set_gripper_position_target([self.gripper_range[0], self.gripper_range[0]])
 
-    def _is_gripper_open(self, tolerance=1e-2):
+    def _is_gripper_open(self, tolerance=2e-3):
         """
         Check if the gripper is fully open.
         
@@ -101,7 +101,7 @@ class Panda(BaseRobot):
         position_condition = max(self.gripper_range[1] - self.get_gripper_position()[0], self.gripper_range[1] - self.get_gripper_position()[1]) < tolerance
         return position_condition
 
-    def _is_gripper_closed(self, tolerance=5e-3):
+    def _is_gripper_closed(self, tolerance=2e-3):
         """
         Check if the gripper is fully closed.
         

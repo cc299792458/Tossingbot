@@ -93,7 +93,7 @@ class BaseRobot:
         self.arm_upper_limits = [info.upper_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
         self.arm_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
 
-    def _store_link_information(self):
+    def _store_link_information(self, change_dynamics=False):
         """
         Store link information in a dictionary and set the TCP link based on the robot type.
         """
@@ -103,7 +103,8 @@ class BaseRobot:
             link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
             self.links[link_name] = joint_id
             # # Change friction parameter
-            # p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
+            if change_dynamics:
+                p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
         
         # Set TCP link based on robot type
         if self.robot_type == 'ur5_robotiq85':
@@ -232,6 +233,31 @@ class BaseRobot:
             maxNumIterations=100
         )
         return joint_position[:self.num_arm_dofs]
+    
+    ############### gripper ###############
+    def set_gripper_position(self):
+        raise NotImplementedError
+    
+    def set_gripper_position_target(self):
+        raise NotImplementedError
+    
+    def get_gripper_position(self):
+        raise NotImplementedError
+    
+    def open_gripper(self):
+        raise NotImplementedError
+    
+    def close_gripper(self):
+        raise NotImplementedError
+    
+    def _is_gripper_open(self):
+        raise NotImplementedError
+    
+    def _is_gripper_closed(self):
+        raise NotImplementedError
+    
+    def _is_gripper_stopped(self):
+        raise NotImplementedError
 
     ############### grasp and throw motion primitives ###############
     def grasp(self, tcp_target_pose, num_subtargets=10):
