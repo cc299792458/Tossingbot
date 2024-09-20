@@ -2,9 +2,9 @@ import time
 import pybullet as p
 import pybullet_data
 
-from tossingbot.scene import setup_scene
+from tossingbot.envs.pybullet.tasks.base_scene import setup_scene
 from tossingbot.utils.misc_utils import set_seed
-from tossingbot.scene.camera import capture_rgbd_image, depth_to_point_cloud_with_color, initialize_plots, plot_rgb_pointcloud
+from tossingbot.envs.pybullet.utils.camera_utils import capture_rgbd_image, depth_to_point_cloud_with_color, initialize_plots, plot_rgb_pointcloud
 
 if __name__ == '__main__':
     ######----- Set up parameters -----#####

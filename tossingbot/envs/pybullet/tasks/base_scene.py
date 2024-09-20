@@ -3,8 +3,8 @@ import random
 import pybullet as p
 import pybullet_data
 
-from tossingbot.robot import UR5Robotiq85
-from tossingbot.scene.objects import create_box, create_sphere
+from tossingbot.envs.pybullet.robot import UR5Robotiq85
+from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_sphere
 
 def setup_workspace(length=0.3, width=0.4, position=[0.55, 0.0]):
     """
