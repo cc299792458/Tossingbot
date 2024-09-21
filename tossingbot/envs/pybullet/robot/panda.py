@@ -181,4 +181,5 @@ if __name__ == '__main__':
         elif not throw_completed:
             throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
         p.stepSimulation()
+        robot.visualize_tcp_trajectory()
         time.sleep(1./240.)

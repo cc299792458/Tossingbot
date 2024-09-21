@@ -238,6 +238,12 @@ class BaseRobot:
         position = link_state[0]
         orientation = link_state[1]
         return [position, orientation]
+    
+    def get_tcp_target_pose(self):
+        if hasattr(self, '_tcp_target_pose'):
+            return self._tcp_target_pose
+        else:
+            return None
 
     def get_tcp_velocity(self):
         """
@@ -311,7 +317,6 @@ class BaseRobot:
 
         return joint_velocities
 
-    
     ############### gripper ###############
     def set_gripper_position(self):
         raise NotImplementedError
@@ -369,8 +374,8 @@ class BaseRobot:
         if self._grasp_step == 0:
             # Move through the trajectory to the position above the target
             if self._trajectory_index < len(self._tcp_trajectory):
-                current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
+                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached, move to the next step (Step 2)
@@ -391,8 +396,8 @@ class BaseRobot:
         elif self._grasp_step == 2:
             # Move through the trajectory to the target position
             if self._trajectory_index < len(self._tcp_trajectory):
-                current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
+                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached the target, move to the next step (Step 4)
@@ -413,8 +418,8 @@ class BaseRobot:
         elif self._grasp_step == 4:
             # Move through the trajectory to the post-grasp position
             if self._trajectory_index < len(self._tcp_trajectory):
-                current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
+                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached, the grasping process is complete
@@ -463,8 +468,8 @@ class BaseRobot:
         if self._throw_step == 0:
             if self._trajectory_index < len(self._tcp_trajectory):
                 # Move step by step along the trajectory towards the release point
-                current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set the TCP to the current subtarget
+                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the TCP to the current subtarget
                 self._trajectory_index += 1
             else:
                 # Once the release point is reached, switch to velocity control for release
@@ -505,8 +510,8 @@ class BaseRobot:
         elif self._throw_step == 2:
             # Switch back to position control for the deceleration trajectory
             if self._trajectory_index < len(self._tcp_trajectory):
-                current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set the TCP to the current subtarget
+                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the TCP to the current subtarget
                 self._trajectory_index += 1
             else:
                 # Once deceleration is complete, the throwing process is done
@@ -675,3 +680,35 @@ class BaseRobot:
                 link_name, pos, textColorRGB=[1, 1, 1],
                 parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
             )
+
+    def visualize_tcp_trajectory(self, color_target=[1, 0, 0], color_actual=[0, 1, 0], line_duration=5):
+        """
+        Visualize the TCP target and actual trajectories using debug lines.
+        
+        Args:
+            color_target (list): RGB color for target trajectory lines.
+            color_actual (list): RGB color for actual trajectory lines.
+            line_duration (float): The duration for which the lines will be visible.
+        """
+
+        target_pose = self.get_tcp_target_pose()
+        current_pose = self.get_tcp_pose()
+
+        if target_pose is None:
+            if not hasattr(self, '_prev_tcp_pose'):
+                self._prev_tcp_pose = current_pose
+            return
+        else:
+            if not hasattr(self, '_prev_tcp_target_pose') or not hasattr(self, '_prev_tcp_pose'):
+                self._prev_tcp_target_pose = target_pose
+                self._prev_tcp_pose = current_pose
+                return
+
+        if target_pose is not None:
+            # Visualize the target TCP trajectory
+            p.addUserDebugLine(self._prev_tcp_target_pose[0], target_pose[0], color_target, line_duration)
+            self._prev_tcp_target_pose = target_pose
+
+        # Visualize the actual TCP trajectory
+        p.addUserDebugLine(self._prev_tcp_pose[0], current_pose[0], color_actual, line_duration)
+        self._prev_tcp_pose = current_pose
