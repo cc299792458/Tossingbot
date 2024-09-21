@@ -116,17 +116,17 @@ class BaseRobot:
         """
         Reset the robot to its initial configuration.
         """
-        self.reset_arm()
-        self.reset_gripper()
+        self._reset_arm()
+        self._reset_gripper()
 
-    def reset_arm(self):
+    def _reset_arm(self):
         """
         Reset the arm to its initial position.
         """
         self.set_arm_joint_position(self.initial_position[0:self.num_arm_dofs])
         self.set_arm_joint_position_target(self.initial_position[0:self.num_arm_dofs])
 
-    def reset_gripper(self):
+    def _reset_gripper(self):
         """
         Reset the gripper to its open position.
         """
@@ -257,13 +257,196 @@ class BaseRobot:
         raise NotImplementedError
 
     ############### grasp and throw motion primitives ###############
-    def grasp(self, tcp_target_pose, num_subtargets=10):
+    # def grasp(self, tcp_target_pose, num_subtargets=10):
+    #     """
+    #     Perform a grasping action at the target TCP pose in a step-by-step manner.
+        
+    #     Args:
+    #         tcp_target_pose (list): Target TCP pose as [position, orientation].
+    #         num_subtargets (int): Number of subtargets for smooth trajectory.
+        
+    #     Returns:
+    #         bool: True if the grasping process is completed, False otherwise.
+    #     """
+    #     # Initialize or continue the grasping process
+    #     if not hasattr(self, '_grasp_step'):
+    #         self._grasp_step = 0  # Initialize the grasp step
+    #         self.pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
+    #         self.tcp_target_pose = tcp_target_pose
+
+    #     if self._grasp_step == 0:
+    #         # Move to a position over the target with subtargets
+    #         if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
+    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
+    #                                    final_position_tolerance=0.05, final_orientation_tolerance=0.05):
+    #             self._grasp_step = 1  # Move to the next step
+    #         return False  # Grasping not yet complete
+
+    #     elif self._grasp_step == 1:
+    #         # Open the gripper
+    #         self.open_gripper()
+    #         # Check if the gripper has stopped moving
+    #         if self._is_gripper_stopped():
+    #             self._grasp_step = 2  # Move to the next step
+    #         return False  # Grasping not yet complete
+
+    #     elif self._grasp_step == 2:
+    #         # Move to the target position with subtargets
+    #         if self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets, 
+    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
+    #                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
+    #             self._grasp_step = 3  # Move to the next step
+    #         return False  # Grasping not yet complete
+
+    #     elif self._grasp_step == 3:
+    #         # Close the gripper
+    #         self.close_gripper()
+    #         # Check if the gripper has stopped moving
+    #         if self._is_gripper_stopped():
+    #             self._grasp_step = 4  # Move to the next step
+    #         return False  # Grasping not yet complete
+
+    #     elif self._grasp_step == 4:
+    #         # Move back to the position over the target with subtargets
+    #         if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
+    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
+    #                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
+    #             del self._grasp_step  # Grasping process is complete, cleanup
+    #             return True  # Grasping process is complete
+    #         return False  # Grasping not yet complete
+
+    #     return False  # Grasping process is not complete
+
+    # def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, 
+    #                     position_tolerance=0.05, orientation_tolerance=0.05, 
+    #                     final_position_tolerance=0.01, final_orientation_tolerance=0.01,
+    #                     stop_pose_change_tolerance=1e-6, stop_check_steps=10):
+    #     """
+    #     Generate subtargets to move the TCP to the target pose smoothly.
+
+    #     Args:
+    #         target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
+    #         num_subtargets (int): The number of subtargets to create along the trajectory.
+    #         position_tolerance (float): Tolerance for position to switch to the next subtarget.
+    #         orientation_tolerance (float): Tolerance for orientation to switch to the next subtarget.
+    #         final_position_tolerance (float): Tolerance for final position.
+    #         final_orientation_tolerance (float): Tolerance for final orientation.
+    #         stop_pose_change_tolerance (float): Pose change threshold to consider the robot stopped.
+    #         stop_check_steps (int): Number of steps to confirm the robot has stopped.
+            
+    #     Returns:
+    #         bool: True if the trajectory is completed, False otherwise.
+    #     """
+    #     # Generate subtargets only if they haven't been created yet
+    #     if not hasattr(self, '_subtargets') or not self._subtargets:
+    #         self._subtargets = self._generate_smooth_subtargets(self.get_tcp_pose(), target_tcp_pose, num_subtargets)
+    #         self._subtarget_index = 0  # Initialize the subtarget index here
+    #         self.stopped_counter = 0  # Initialize stopping counter
+    #         self.previous_tcp_pose = self.get_tcp_pose()  # Initialize previous TCP pose
+
+    #     # Check if the TCP has stopped
+    #     current_tcp_pose = self.get_tcp_pose()
+    #     position_change = np.linalg.norm(np.array(current_tcp_pose[0]) - np.array(self.previous_tcp_pose[0]))
+    #     orientation_change = np.abs(np.dot(current_tcp_pose[1], self.previous_tcp_pose[1]) - 1)  # Quaternion difference
+
+    #     # Update the previous TCP pose
+    #     self.previous_tcp_pose = current_tcp_pose
+
+    #     # Check if the changes are below the threshold
+    #     if position_change < stop_pose_change_tolerance and orientation_change < stop_pose_change_tolerance:
+    #         self.stopped_counter += 1
+    #     else:
+    #         self.stopped_counter = 0  # Reset if TCP starts moving again
+
+    #     # If TCP is considered stopped, move to the next subtarget or finish
+    #     if self.stopped_counter > stop_check_steps:
+    #         self.stopped_counter = 0  # Reset counter for the next check
+    #         self._subtarget_index += 1
+
+    #     # Move through subtargets
+    #     if self._subtarget_index <= len(self._subtargets):
+    #         if self._subtarget_index < len(self._subtargets):
+    #             current_subtarget = self._subtargets[self._subtarget_index]
+    #             current_position_tolerance = position_tolerance
+    #             current_orientation_tolerance = orientation_tolerance
+    #         else:
+    #             current_subtarget = target_tcp_pose
+    #             current_position_tolerance = final_position_tolerance
+    #             current_orientation_tolerance = final_orientation_tolerance
+
+    #         # Check if the TCP has reached the current subtarget
+    #         if not self.is_tcp_reached_target(target_pose=current_subtarget, 
+    #                                           position_tolerance=current_position_tolerance, 
+    #                                           orientation_tolerance=current_orientation_tolerance):
+    #             # Move to the current subtarget
+    #             self.set_tcp_pose_target(current_subtarget)
+    #         else:
+    #             # Only move to the next subtarget if the current one is reached
+    #             self._subtarget_index += 1
+
+    #     # Check if the entire trajectory is completed
+    #     if self._subtarget_index > len(self._subtargets):
+    #         del self._subtargets  # Clear subtargets
+    #         del self._subtarget_index
+    #         return True  # Trajectory is completed
+
+    #     return False  # Trajectory is not completed
+
+    # def _generate_smooth_subtargets(self, start_pose, end_pose, num_subtargets):
+    #     """
+    #     Generate smooth intermediate subtargets using linear interpolation.
+        
+    #     Args:
+    #         start_pose (list): Start pose as [position, orientation].
+    #         end_pose (list): End pose as [position, orientation].
+    #         num_subtargets (int): Number of subtargets to generate.
+            
+    #     Returns:
+    #         list: List of smooth subtargets [position, orientation].
+    #     """
+    #     # Linear interpolation for position
+    #     start_pos = np.array(start_pose[0])
+    #     end_pos = np.array(end_pose[0])
+    #     pos_interp = np.linspace(start_pos, end_pos, num_subtargets + 2)[1:-1]
+
+    #     # Slerp for orientation using scipy Rotation
+    #     start_rot = R.from_quat(start_pose[1])
+    #     end_rot = R.from_quat(end_pose[1])
+    #     start_quat = start_rot.as_quat()
+    #     end_quat = end_rot.as_quat()
+    #     times = np.linspace(0, 1, num_subtargets + 2)[1:-1]
+    #     ori_interp = slerp(start_quat, end_quat, times)
+
+    #     subtargets = []
+    #     for pos, ori in zip(pos_interp, ori_interp):
+    #         subtargets.append([pos.tolist(), ori.tolist()])
+    #     return subtargets
+
+    # def is_tcp_reached_target(self, target_pose, position_tolerance=0.01, orientation_tolerance=0.01):
+    #     """
+    #     Check if the TCP has reached the target pose.
+        
+    #     Args:
+    #         target_pose (list): Target pose as [position, orientation].
+    #         position_tolerance (float): Tolerance for position difference.
+    #         orientation_tolerance (float): Tolerance for orientation difference in radians.
+            
+    #     Returns:
+    #         bool: True if the TCP is within the specified tolerances, False otherwise.
+    #     """
+    #     current_pose = self.get_tcp_pose()
+    #     distances = pose_distance(current_pose, target_pose)
+    #     return (
+    #         distances['position_distance'] <= position_tolerance and
+    #         distances['orientation_distance'] <= orientation_tolerance
+    #     )
+    
+    def grasp(self, tcp_target_pose):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
         Args:
             tcp_target_pose (list): Target TCP pose as [position, orientation].
-            num_subtargets (int): Number of subtargets for smooth trajectory.
         
         Returns:
             bool: True if the grasping process is completed, False otherwise.
@@ -271,15 +454,31 @@ class BaseRobot:
         # Initialize or continue the grasping process
         if not hasattr(self, '_grasp_step'):
             self._grasp_step = 0  # Initialize the grasp step
-            self.pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
+            self.pose_over_target = [tcp_target_pose[0][:2] + [0.3], tcp_target_pose[1]]
             self.tcp_target_pose = tcp_target_pose
 
+            # Generate trajectory for moving over the target position
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, 
+                                                                start_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                target_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                estimate_speed=0.5)
+            self._trajectory_index = 0
+
         if self._grasp_step == 0:
-            # Move to a position over the target with subtargets
-            if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
-                                       position_tolerance=0.05, orientation_tolerance=0.05, 
-                                       final_position_tolerance=0.05, final_orientation_tolerance=0.05):
-                self._grasp_step = 1  # Move to the next step
+            # Move to a position over the target using the generated TCP trajectory
+            if self._trajectory_index < len(self._tcp_trajectory):
+                current_setpoint = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self._trajectory_index += 1
+            else:
+                # Once reached the final point, move to the next step
+                self._grasp_step = 1
+                self._trajectory_index = 0  # Reset for next trajectory
+                # Generate trajectory for moving to the target position (step 2)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, 
+                                                                    start_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                    target_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                    estimate_speed=0.5)
             return False  # Grasping not yet complete
 
         elif self._grasp_step == 1:
@@ -291,11 +490,15 @@ class BaseRobot:
             return False  # Grasping not yet complete
 
         elif self._grasp_step == 2:
-            # Move to the target position with subtargets
-            if self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets, 
-                                       position_tolerance=0.05, orientation_tolerance=0.05, 
-                                       final_position_tolerance=0.01, final_orientation_tolerance=0.01):
-                self._grasp_step = 3  # Move to the next step
+            # Move to the target position using the generated TCP trajectory
+            if self._trajectory_index < len(self._tcp_trajectory):
+                current_setpoint = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self._trajectory_index += 1
+            else:
+                # Once reached the final point, move to the next step
+                self._grasp_step = 3
+                self._trajectory_index = 0  # Reset for next trajectory
             return False  # Grasping not yet complete
 
         elif self._grasp_step == 3:
@@ -304,142 +507,27 @@ class BaseRobot:
             # Check if the gripper has stopped moving
             if self._is_gripper_stopped():
                 self._grasp_step = 4  # Move to the next step
+                # Generate trajectory for moving back to the position over the target (step 4)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, self.pose_over_target, 
+                                                                    start_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                    target_tcp_vel=[0, 0, 0, 0, 0, 0], 
+                                                                    estimate_speed=0.5)
             return False  # Grasping not yet complete
 
         elif self._grasp_step == 4:
-            # Move back to the position over the target with subtargets
-            if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
-                                       position_tolerance=0.05, orientation_tolerance=0.05, 
-                                       final_position_tolerance=0.01, final_orientation_tolerance=0.01):
-                del self._grasp_step  # Grasping process is complete, cleanup
+            # Move back to the position over the target using the generated TCP trajectory
+            if self._trajectory_index < len(self._tcp_trajectory):
+                current_setpoint = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self._trajectory_index += 1
+            else:
+                # Once reached the final point, the grasping process is complete
+                del self._grasp_step  # Cleanup
+                del self._tcp_trajectory
+                del self._trajectory_index
                 return True  # Grasping process is complete
-            return False  # Grasping not yet complete
 
         return False  # Grasping process is not complete
-
-    def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, 
-                        position_tolerance=0.05, orientation_tolerance=0.05, 
-                        final_position_tolerance=0.01, final_orientation_tolerance=0.01,
-                        stop_pose_change_tolerance=1e-6, stop_check_steps=10):
-        """
-        Generate subtargets to move the TCP to the target pose smoothly.
-
-        Args:
-            target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
-            num_subtargets (int): The number of subtargets to create along the trajectory.
-            position_tolerance (float): Tolerance for position to switch to the next subtarget.
-            orientation_tolerance (float): Tolerance for orientation to switch to the next subtarget.
-            final_position_tolerance (float): Tolerance for final position.
-            final_orientation_tolerance (float): Tolerance for final orientation.
-            stop_pose_change_tolerance (float): Pose change threshold to consider the robot stopped.
-            stop_check_steps (int): Number of steps to confirm the robot has stopped.
-            
-        Returns:
-            bool: True if the trajectory is completed, False otherwise.
-        """
-        # Generate subtargets only if they haven't been created yet
-        if not hasattr(self, '_subtargets') or not self._subtargets:
-            self._subtargets = self._generate_smooth_subtargets(self.get_tcp_pose(), target_tcp_pose, num_subtargets)
-            self._subtarget_index = 0  # Initialize the subtarget index here
-            self.stopped_counter = 0  # Initialize stopping counter
-            self.previous_tcp_pose = self.get_tcp_pose()  # Initialize previous TCP pose
-
-        # Check if the TCP has stopped
-        current_tcp_pose = self.get_tcp_pose()
-        position_change = np.linalg.norm(np.array(current_tcp_pose[0]) - np.array(self.previous_tcp_pose[0]))
-        orientation_change = np.abs(np.dot(current_tcp_pose[1], self.previous_tcp_pose[1]) - 1)  # Quaternion difference
-
-        # Update the previous TCP pose
-        self.previous_tcp_pose = current_tcp_pose
-
-        # Check if the changes are below the threshold
-        if position_change < stop_pose_change_tolerance and orientation_change < stop_pose_change_tolerance:
-            self.stopped_counter += 1
-        else:
-            self.stopped_counter = 0  # Reset if TCP starts moving again
-
-        # If TCP is considered stopped, move to the next subtarget or finish
-        if self.stopped_counter > stop_check_steps:
-            self.stopped_counter = 0  # Reset counter for the next check
-            self._subtarget_index += 1
-
-        # Move through subtargets
-        if self._subtarget_index <= len(self._subtargets):
-            if self._subtarget_index < len(self._subtargets):
-                current_subtarget = self._subtargets[self._subtarget_index]
-                current_position_tolerance = position_tolerance
-                current_orientation_tolerance = orientation_tolerance
-            else:
-                current_subtarget = target_tcp_pose
-                current_position_tolerance = final_position_tolerance
-                current_orientation_tolerance = final_orientation_tolerance
-
-            # Check if the TCP has reached the current subtarget
-            if not self.is_tcp_reached_target(target_pose=current_subtarget, 
-                                              position_tolerance=current_position_tolerance, 
-                                              orientation_tolerance=current_orientation_tolerance):
-                # Move to the current subtarget
-                self.set_tcp_pose_target(current_subtarget)
-            else:
-                # Only move to the next subtarget if the current one is reached
-                self._subtarget_index += 1
-
-        # Check if the entire trajectory is completed
-        if self._subtarget_index > len(self._subtargets):
-            del self._subtargets  # Clear subtargets
-            del self._subtarget_index
-            return True  # Trajectory is completed
-
-        return False  # Trajectory is not completed
-
-    def _generate_smooth_subtargets(self, start_pose, end_pose, num_subtargets):
-        """
-        Generate smooth intermediate subtargets using linear interpolation.
-        
-        Args:
-            start_pose (list): Start pose as [position, orientation].
-            end_pose (list): End pose as [position, orientation].
-            num_subtargets (int): Number of subtargets to generate.
-            
-        Returns:
-            list: List of smooth subtargets [position, orientation].
-        """
-        # Linear interpolation for position
-        start_pos = np.array(start_pose[0])
-        end_pos = np.array(end_pose[0])
-        pos_interp = np.linspace(start_pos, end_pos, num_subtargets + 2)[1:-1]
-
-        # Slerp for orientation using scipy Rotation
-        start_rot = R.from_quat(start_pose[1])
-        end_rot = R.from_quat(end_pose[1])
-        start_quat = start_rot.as_quat()
-        end_quat = end_rot.as_quat()
-        times = np.linspace(0, 1, num_subtargets + 2)[1:-1]
-        ori_interp = slerp(start_quat, end_quat, times)
-
-        subtargets = []
-        for pos, ori in zip(pos_interp, ori_interp):
-            subtargets.append([pos.tolist(), ori.tolist()])
-        return subtargets
-
-    def is_tcp_reached_target(self, target_pose, position_tolerance=0.01, orientation_tolerance=0.01):
-        """
-        Check if the TCP has reached the target pose.
-        
-        Args:
-            target_pose (list): Target pose as [position, orientation].
-            position_tolerance (float): Tolerance for position difference.
-            orientation_tolerance (float): Tolerance for orientation difference in radians.
-            
-        Returns:
-            bool: True if the TCP is within the specified tolerances, False otherwise.
-        """
-        current_pose = self.get_tcp_pose()
-        distances = pose_distance(current_pose, target_pose)
-        return (
-            distances['position_distance'] <= position_tolerance and
-            distances['orientation_distance'] <= orientation_tolerance
-        )
     
     def throw(self, tcp_target_pose, tcp_target_velocity, num_subtargets=10):
         """
@@ -487,6 +575,110 @@ class BaseRobot:
             return False  # Throwing not yet complete
 
         return False  # Throwing process is not complete
+    
+    def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel, target_tcp_vel, estimate_speed=0.5):
+        """
+        Generates a TCP trajectory from start to target pose using quintic polynomial interpolation for both position
+        and orientation (converted to Euler angles), considering velocity information.
+        
+        Args:
+            start_tcp_pose (list): Starting TCP pose [position, orientation].
+            target_tcp_pose (list): Target TCP pose [position, orientation].
+            start_tcp_vel (list): Starting TCP velocity (linear velocity + angular velocity).
+            target_tcp_vel (list): Target TCP velocity (linear velocity + angular velocity).
+            estimate_speed (float): Speed used to estimate the duration of the trajectory.
+        
+        Returns:
+            list: List of subtargets (setpoints) for the TCP to follow, each containing position and orientation.
+        """
+        # Extract start and target positions and orientations
+        start_pos = np.array(start_tcp_pose[0])
+        target_pos = np.array(target_tcp_pose[0])
+        start_rot = R.from_quat(start_tcp_pose[1])
+        target_rot = R.from_quat(target_tcp_pose[1])
+        start_quat = start_rot.as_quat()
+        target_quat = target_rot.as_quat()
+        
+        # Extract start and target translational and rotational velocities
+        start_trans_vel = np.array(start_tcp_vel[:3])
+        target_trans_vel = np.array(target_tcp_vel[:3])
+        start_rot_vel = np.array(start_tcp_vel[3:])
+        target_rot_vel = np.array(target_tcp_vel[3:])
+        
+        # Estimate the time needed based on the distance and given speed
+        distance = np.linalg.norm(target_pos - start_pos)
+        time_estimate = distance / estimate_speed
+        
+        # Compute the number of steps based on PyBullet's simulation step size (1/240 seconds)
+        num_steps = int(time_estimate / (1/240))
+        
+        # Generate quintic polynomial trajectory for linear positions
+        pos_trajectory = self._generate_quintic_trajectory(start_s=start_pos, 
+                                                           end_s=target_pos, 
+                                                           start_v=start_trans_vel, 
+                                                           end_v=target_trans_vel, 
+                                                           duration=time_estimate, 
+                                                           num_steps=num_steps)
+
+        # Generate quaternion trajectory using slerp
+        t_values = np.linspace(0, 1, num_steps)  # Interpolation points for Slerp
+        ori_trajectory = slerp(start_quat, target_quat, t_values)
+        
+        # Generate the final list of subtargets (setpoints) combining positions and orientations
+        subtargets = []
+        for i in range(num_steps):
+            subtarget = (pos_trajectory[i].tolist(), ori_trajectory[i].tolist())
+            subtargets.append(subtarget)
+        
+        return subtargets
+
+    def _generate_quintic_trajectory(self, start_s, end_s, start_v=None, end_v=None, start_acc=None, end_acc=None, duration=None, num_steps=100):
+        """
+        Generates a quintic polynomial trajectory for multiple dimensions (e.g., position components).
+        
+        Args:
+            start_s (float or np.ndarray): Initial positions for each dimension (e.g., [x, y, z]).
+            end_s (float or np.ndarray): Target positions for each dimension.
+            start_v (float or np.ndarray, optional): Initial velocities for each dimension. Defaults to 0 if None.
+            end_v (float or np.ndarray, optional): Target velocities for each dimension. Defaults to 0 if None.
+            start_acc (float or np.ndarray, optional): Initial accelerations for each dimension. Defaults to 0 if None.
+            end_acc (float or np.ndarray, optional): Target accelerations for each dimension. Defaults to 0 if None.
+            duration (float): Total duration of the trajectory.
+            num_steps (int): Number of points to sample along the trajectory.
+            
+        Returns:
+            np.ndarray: Array of positions sampled along the quintic polynomial trajectory.
+        """
+        # Convert inputs to numpy arrays
+        start_s = np.array(start_s)
+        end_s = np.array(end_s)
+
+        # Set velocities and accelerations to zero arrays if they are None
+        start_v = np.zeros_like(start_s) if start_v is None else start_v
+        end_v = np.zeros_like(end_s) if end_v is None else end_v
+        start_acc = np.zeros_like(start_s) if start_acc is None else start_acc
+        end_acc = np.zeros_like(end_s) if end_acc is None else end_acc
+
+        # Initialize the trajectory for each dimension
+        trajectory_s = np.zeros((num_steps, len(start_s)))
+        
+        # Compute the quintic polynomial for each dimension independently
+        for dim in range(len(start_s)):
+            delta_s = end_s[dim] - start_s[dim]
+            # Corrected quintic polynomial coefficients
+            A = (12 * delta_s - 6 * (start_v[dim] + end_v[dim]) * duration - (end_acc[dim] - start_acc[dim]) * duration**2) / (2 * duration**5)
+            B = (-30 * delta_s + (16 * start_v[dim] + 14 * end_v[dim]) * duration + (3 * start_acc[dim] - 2 * end_acc[dim]) * duration**2) / (2 * duration**4)
+            C = (20 * delta_s - (12 * start_v[dim] + 8 * end_v[dim]) * duration - (3 * start_acc[dim] - end_acc[dim]) * duration**2) / (2 * duration**3)
+            D = start_acc[dim] / 2
+            E = start_v[dim]
+            F = start_s[dim]
+
+            # Time steps
+            t_s = np.linspace(0, duration, num_steps)
+            # Evaluate the quintic polynomial at each time step for this dimension
+            trajectory_s[:, dim] = A * t_s**5 + B * t_s**4 + C * t_s**3 + D * t_s**2 + E * t_s + F
+
+        return trajectory_s
 
     ############### visualization ###############
     def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):

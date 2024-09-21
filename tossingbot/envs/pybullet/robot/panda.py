@@ -166,10 +166,10 @@ if __name__ == '__main__':
     object_id = create_sphere(radius=0.02, position=position, mass=0.2)
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
     tcp_target_pose = [position, [1.0, 0.0, 0.0, 0.0]]
-    completed = False
+    grasp_completed = False
 
     while True:
-        if not completed:
-            completed = robot.grasp(tcp_target_pose=tcp_target_pose, num_subtargets=10)
+        if not grasp_completed:
+            grasp_completed = robot.grasp(tcp_target_pose=tcp_target_pose)
         p.stepSimulation()
         time.sleep(1./240.)
