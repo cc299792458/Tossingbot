@@ -165,11 +165,20 @@ if __name__ == '__main__':
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
     object_id = create_sphere(radius=0.02, position=position, mass=0.2)
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
-    tcp_target_pose = [position, [1.0, 0.0, 0.0, 0.0]]
+    grasp_pose = (position, [1.0, 0.0, 0.0, 0.0])
+    throw_pose = ([0.5, 0.0, 0.3], [1.0, 0.0, 0.0, 0.0])
+    throw_vel = ([0.1, 0.0, 0.0], [0.0, 0.0, 0.0])
     grasp_completed = False
+    throw_completed = False
 
+    count = 0
     while True:
         if not grasp_completed:
-            grasp_completed = robot.grasp(tcp_target_pose=tcp_target_pose)
+            grasp_completed = robot.grasp(tcp_target_pose=grasp_pose)
+        # Wait for 48 / 240 second
+        elif count < 48:
+            count += 1
+        elif not throw_completed:
+            throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
         p.stepSimulation()
         time.sleep(1./240.)

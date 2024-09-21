@@ -154,6 +154,21 @@ class BaseRobot:
                 maxVelocity=self.joints[joint_id].max_velocity,
             )
 
+    def set_arm_joint_velocity_target(self, target_velocity):
+        """
+        Set the target velocity for the arm joints.
+        
+        Args:
+            target_velocity (list): List of target velocities for each arm joint.
+        """
+        assert len(target_velocity) == self.num_arm_dofs, "Velocity length mismatch"
+        for joint_id, vel in zip(self.arm_controllable_joints, target_velocity):
+            p.setJointMotorControl2(
+                self.robot_id, joint_id, p.VELOCITY_CONTROL, 
+                targetVelocity=vel,
+                force=self.joints[joint_id].max_force
+            )
+
     def get_arm_joint_position(self):
         """
         Get the current position of the arm joints.
@@ -163,6 +178,15 @@ class BaseRobot:
         """
         return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints]
 
+    def get_arm_joint_velocity(self):
+        """
+        Get the current velocity of the arm joints.
+        
+        Returns:
+            list: Current velocities of arm controllable joints.
+        """
+        return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.arm_controllable_joints]
+
     ############### set tcp pose, get tcp pose, and inverse kinematics ###############
     def set_tcp_pose(self, tcp_pose):
         """
@@ -170,10 +194,10 @@ class BaseRobot:
         
         Args:
             tcp_pose (list): A list containing the TCP pose with [position, orientation].
-                             - position: [x, y, z]
-                             - orientation: [qx, qy, qz, qw]
+                            - position: [x, y, z]
+                            - orientation: [qx, qy, qz, qw]
         """
-        joint_position = self.inverse_kinematics(pose=tcp_pose)
+        joint_position = self.pose_ik(pose=tcp_pose)
         self.set_arm_joint_position(position=joint_position)
 
     def set_tcp_pose_target(self, target_tcp_pose):
@@ -185,8 +209,21 @@ class BaseRobot:
                                     - position: [x, y, z]
                                     - orientation: [qx, qy, qz, qw]
         """
-        target_joint_position = self.inverse_kinematics(pose=target_tcp_pose)
+        target_joint_position = self.pose_ik(pose=target_tcp_pose)
         self.set_arm_joint_position_target(target_position=target_joint_position)
+
+    def set_tcp_velocity_target(self, target_tcp_velocity):
+        """
+        Set the target velocity for the TCP.
+        
+        Args:
+            target_tcp_velocity (list): Desired velocity in Cartesian space [linear, angular].
+        """
+        target_joint_velocity = self.velocity_ik(
+            linear_velocity=target_tcp_velocity[:3],
+            angular_velocity=target_tcp_velocity[3:]
+        )
+        self.set_arm_joint_velocity_target(target_joint_velocity)
 
     def get_tcp_pose(self):
         """
@@ -194,15 +231,30 @@ class BaseRobot:
         
         Returns:
             list: A list containing the TCP pose with [position, orientation].
-                  - position: [x, y, z]
-                  - orientation: [qx, qy, qz, qw]
+                - position: [x, y, z]
+                - orientation: [qx, qy, qz, qw]
         """
         link_state = p.getLinkState(self.robot_id, self.tcp_id)
         position = link_state[0]
         orientation = link_state[1]
         return [position, orientation]
 
-    def inverse_kinematics(self, pose, rest_pose=None):
+    def get_tcp_velocity(self):
+        """
+        Get the current velocity of the TCP.
+        
+        Returns:
+            list: A list containing the TCP velocity with [linear_velocity, angular_velocity].
+                - linear_velocity: [vx, vy, vz]
+                - angular_velocity: [wx, wy, wz]
+        """
+        link_state = p.getLinkState(self.robot_id, self.tcp_id, computeLinkVelocity=True)
+        linear_velocity = link_state[6]
+        angular_velocity = link_state[7]
+        return [linear_velocity, angular_velocity]
+
+    ############### Pose and Velocity Inverse Kinematics ###############
+    def pose_ik(self, pose, rest_pose=None):
         """
         Calculate inverse kinematics for the given TCP pose.
         
@@ -230,6 +282,35 @@ class BaseRobot:
             maxNumIterations=100
         )
         return joint_position[:self.num_arm_dofs]
+
+    def velocity_ik(self, linear_velocity, angular_velocity):
+        """
+        Compute joint velocities required to achieve the desired TCP (end-effector) velocity.
+
+        Args:
+            linear_velocity (list or np.ndarray): Desired linear velocity [vx, vy, vz].
+            angular_velocity (list or np.ndarray): Desired angular velocity [wx, wy, wz].
+
+        Returns:
+            np.ndarray: Joint velocities to achieve the desired TCP velocity.
+        """
+        joint_positions = self.get_arm_joint_position()
+        zero_vec = [0.0] * len(joint_positions)
+        jacobian_linear, jacobian_angular = p.calculateJacobian(
+            bodyUniqueId=self.robot_id,
+            linkIndex=self.tcp_id,
+            localPosition=[0, 0, 0],  # TCP origin in local coordinates
+            objPositions=joint_positions,
+            objVelocities=zero_vec,
+            objAccelerations=zero_vec
+        )
+
+        jacobian = np.vstack((jacobian_linear, jacobian_angular))  # Combine linear and angular Jacobians
+        desired_velocity = np.hstack((linear_velocity, angular_velocity))  # Desired velocity vector
+        joint_velocities = np.linalg.pinv(jacobian).dot(desired_velocity)  # Compute joint velocities using Jacobian
+
+        return joint_velocities
+
     
     ############### gripper ###############
     def set_gripper_position(self):
@@ -256,197 +337,20 @@ class BaseRobot:
     def _is_gripper_stopped(self):
         raise NotImplementedError
 
-    ############### grasp and throw motion primitives ###############
-    # def grasp(self, tcp_target_pose, num_subtargets=10):
-    #     """
-    #     Perform a grasping action at the target TCP pose in a step-by-step manner.
-        
-    #     Args:
-    #         tcp_target_pose (list): Target TCP pose as [position, orientation].
-    #         num_subtargets (int): Number of subtargets for smooth trajectory.
-        
-    #     Returns:
-    #         bool: True if the grasping process is completed, False otherwise.
-    #     """
-    #     # Initialize or continue the grasping process
-    #     if not hasattr(self, '_grasp_step'):
-    #         self._grasp_step = 0  # Initialize the grasp step
-    #         self.pose_over_target = [tcp_target_pose[0][:2] + [0.365], tcp_target_pose[1]]
-    #         self.tcp_target_pose = tcp_target_pose
-
-    #     if self._grasp_step == 0:
-    #         # Move to a position over the target with subtargets
-    #         if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
-    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
-    #                                    final_position_tolerance=0.05, final_orientation_tolerance=0.05):
-    #             self._grasp_step = 1  # Move to the next step
-    #         return False  # Grasping not yet complete
-
-    #     elif self._grasp_step == 1:
-    #         # Open the gripper
-    #         self.open_gripper()
-    #         # Check if the gripper has stopped moving
-    #         if self._is_gripper_stopped():
-    #             self._grasp_step = 2  # Move to the next step
-    #         return False  # Grasping not yet complete
-
-    #     elif self._grasp_step == 2:
-    #         # Move to the target position with subtargets
-    #         if self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets, 
-    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
-    #                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
-    #             self._grasp_step = 3  # Move to the next step
-    #         return False  # Grasping not yet complete
-
-    #     elif self._grasp_step == 3:
-    #         # Close the gripper
-    #         self.close_gripper()
-    #         # Check if the gripper has stopped moving
-    #         if self._is_gripper_stopped():
-    #             self._grasp_step = 4  # Move to the next step
-    #         return False  # Grasping not yet complete
-
-    #     elif self._grasp_step == 4:
-    #         # Move back to the position over the target with subtargets
-    #         if self.set_tcp_trajectory(self.pose_over_target, num_subtargets=num_subtargets, 
-    #                                    position_tolerance=0.05, orientation_tolerance=0.05, 
-    #                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
-    #             del self._grasp_step  # Grasping process is complete, cleanup
-    #             return True  # Grasping process is complete
-    #         return False  # Grasping not yet complete
-
-    #     return False  # Grasping process is not complete
-
-    # def set_tcp_trajectory(self, target_tcp_pose, num_subtargets=10, 
-    #                     position_tolerance=0.05, orientation_tolerance=0.05, 
-    #                     final_position_tolerance=0.01, final_orientation_tolerance=0.01,
-    #                     stop_pose_change_tolerance=1e-6, stop_check_steps=10):
-    #     """
-    #     Generate subtargets to move the TCP to the target pose smoothly.
-
-    #     Args:
-    #         target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
-    #         num_subtargets (int): The number of subtargets to create along the trajectory.
-    #         position_tolerance (float): Tolerance for position to switch to the next subtarget.
-    #         orientation_tolerance (float): Tolerance for orientation to switch to the next subtarget.
-    #         final_position_tolerance (float): Tolerance for final position.
-    #         final_orientation_tolerance (float): Tolerance for final orientation.
-    #         stop_pose_change_tolerance (float): Pose change threshold to consider the robot stopped.
-    #         stop_check_steps (int): Number of steps to confirm the robot has stopped.
-            
-    #     Returns:
-    #         bool: True if the trajectory is completed, False otherwise.
-    #     """
-    #     # Generate subtargets only if they haven't been created yet
-    #     if not hasattr(self, '_subtargets') or not self._subtargets:
-    #         self._subtargets = self._generate_smooth_subtargets(self.get_tcp_pose(), target_tcp_pose, num_subtargets)
-    #         self._subtarget_index = 0  # Initialize the subtarget index here
-    #         self.stopped_counter = 0  # Initialize stopping counter
-    #         self.previous_tcp_pose = self.get_tcp_pose()  # Initialize previous TCP pose
-
-    #     # Check if the TCP has stopped
-    #     current_tcp_pose = self.get_tcp_pose()
-    #     position_change = np.linalg.norm(np.array(current_tcp_pose[0]) - np.array(self.previous_tcp_pose[0]))
-    #     orientation_change = np.abs(np.dot(current_tcp_pose[1], self.previous_tcp_pose[1]) - 1)  # Quaternion difference
-
-    #     # Update the previous TCP pose
-    #     self.previous_tcp_pose = current_tcp_pose
-
-    #     # Check if the changes are below the threshold
-    #     if position_change < stop_pose_change_tolerance and orientation_change < stop_pose_change_tolerance:
-    #         self.stopped_counter += 1
-    #     else:
-    #         self.stopped_counter = 0  # Reset if TCP starts moving again
-
-    #     # If TCP is considered stopped, move to the next subtarget or finish
-    #     if self.stopped_counter > stop_check_steps:
-    #         self.stopped_counter = 0  # Reset counter for the next check
-    #         self._subtarget_index += 1
-
-    #     # Move through subtargets
-    #     if self._subtarget_index <= len(self._subtargets):
-    #         if self._subtarget_index < len(self._subtargets):
-    #             current_subtarget = self._subtargets[self._subtarget_index]
-    #             current_position_tolerance = position_tolerance
-    #             current_orientation_tolerance = orientation_tolerance
-    #         else:
-    #             current_subtarget = target_tcp_pose
-    #             current_position_tolerance = final_position_tolerance
-    #             current_orientation_tolerance = final_orientation_tolerance
-
-    #         # Check if the TCP has reached the current subtarget
-    #         if not self.is_tcp_reached_target(target_pose=current_subtarget, 
-    #                                           position_tolerance=current_position_tolerance, 
-    #                                           orientation_tolerance=current_orientation_tolerance):
-    #             # Move to the current subtarget
-    #             self.set_tcp_pose_target(current_subtarget)
-    #         else:
-    #             # Only move to the next subtarget if the current one is reached
-    #             self._subtarget_index += 1
-
-    #     # Check if the entire trajectory is completed
-    #     if self._subtarget_index > len(self._subtargets):
-    #         del self._subtargets  # Clear subtargets
-    #         del self._subtarget_index
-    #         return True  # Trajectory is completed
-
-    #     return False  # Trajectory is not completed
-
-    # def _generate_smooth_subtargets(self, start_pose, end_pose, num_subtargets):
-    #     """
-    #     Generate smooth intermediate subtargets using linear interpolation.
-        
-    #     Args:
-    #         start_pose (list): Start pose as [position, orientation].
-    #         end_pose (list): End pose as [position, orientation].
-    #         num_subtargets (int): Number of subtargets to generate.
-            
-    #     Returns:
-    #         list: List of smooth subtargets [position, orientation].
-    #     """
-    #     # Linear interpolation for position
-    #     start_pos = np.array(start_pose[0])
-    #     end_pos = np.array(end_pose[0])
-    #     pos_interp = np.linspace(start_pos, end_pos, num_subtargets + 2)[1:-1]
-
-    #     # Slerp for orientation using scipy Rotation
-    #     start_rot = R.from_quat(start_pose[1])
-    #     end_rot = R.from_quat(end_pose[1])
-    #     start_quat = start_rot.as_quat()
-    #     end_quat = end_rot.as_quat()
-    #     times = np.linspace(0, 1, num_subtargets + 2)[1:-1]
-    #     ori_interp = slerp(start_quat, end_quat, times)
-
-    #     subtargets = []
-    #     for pos, ori in zip(pos_interp, ori_interp):
-    #         subtargets.append([pos.tolist(), ori.tolist()])
-    #     return subtargets
-
-    # def is_tcp_reached_target(self, target_pose, position_tolerance=0.01, orientation_tolerance=0.01):
-    #     """
-    #     Check if the TCP has reached the target pose.
-        
-    #     Args:
-    #         target_pose (list): Target pose as [position, orientation].
-    #         position_tolerance (float): Tolerance for position difference.
-    #         orientation_tolerance (float): Tolerance for orientation difference in radians.
-            
-    #     Returns:
-    #         bool: True if the TCP is within the specified tolerances, False otherwise.
-    #     """
-    #     current_pose = self.get_tcp_pose()
-    #     distances = pose_distance(current_pose, target_pose)
-    #     return (
-    #         distances['position_distance'] <= position_tolerance and
-    #         distances['orientation_distance'] <= orientation_tolerance
-    #     )
-    
-    def grasp(self, tcp_target_pose):
+    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (1.0, 0.0, 0.0, 0.0))):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
+        The process involves:
+        1. Moving to a position above the target.
+        2. Opening the gripper.
+        3. Moving down to the target pose.
+        4. Closing the gripper to grasp the object.
+        5. Lifting back to a safe post-grasp position.
+        
         Args:
             tcp_target_pose (list): Target TCP pose as [position, orientation].
+            post_grasp_pose (list, optional): The TCP pose to move to after grasping for safety or further actions.
         
         Returns:
             bool: True if the grasping process is completed, False otherwise.
@@ -454,129 +358,167 @@ class BaseRobot:
         # Initialize or continue the grasping process
         if not hasattr(self, '_grasp_step'):
             self._grasp_step = 0  # Initialize the grasp step
-            self.pose_over_target = [tcp_target_pose[0][:2] + [0.3], tcp_target_pose[1]]
+            self.pose_over_target = [tcp_target_pose[0][:2] + [0.3], tcp_target_pose[1]]  # Position above the target
             self.tcp_target_pose = tcp_target_pose
 
-            # Generate trajectory for moving over the target position
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, 
-                                                                start_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                target_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                estimate_speed=0.5)
-            self._trajectory_index = 0
+            # Generate trajectory for moving to the position above the target
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.5)
+            self._trajectory_index = 0  # Initialize trajectory index
 
+        # Step 1: Move to a position above the target
         if self._grasp_step == 0:
-            # Move to a position over the target using the generated TCP trajectory
+            # Move through the trajectory to the position above the target
             if self._trajectory_index < len(self._tcp_trajectory):
                 current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
-                # Once reached the final point, move to the next step
+                # Once reached, move to the next step (Step 2)
                 self._grasp_step = 1
-                self._trajectory_index = 0  # Reset for next trajectory
-                # Generate trajectory for moving to the target position (step 2)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, 
-                                                                    start_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                    target_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                    estimate_speed=0.5)
-            return False  # Grasping not yet complete
+                self._trajectory_index = 0  # Reset for the next trajectory
+                # Generate the next trajectory to move down to the target pose
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.5)
+            return False  # Grasping process not yet complete
 
+        # Step 2: Open the gripper
         elif self._grasp_step == 1:
-            # Open the gripper
-            self.open_gripper()
-            # Check if the gripper has stopped moving
-            if self._is_gripper_stopped():
+            self.open_gripper()  # Open the gripper
+            if self._is_gripper_stopped():  # Check if the gripper has finished moving
                 self._grasp_step = 2  # Move to the next step
-            return False  # Grasping not yet complete
+            return False  # Grasping process not yet complete
 
+        # Step 3: Move down to the target position
         elif self._grasp_step == 2:
-            # Move to the target position using the generated TCP trajectory
+            # Move through the trajectory to the target position
             if self._trajectory_index < len(self._tcp_trajectory):
                 current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
-                # Once reached the final point, move to the next step
+                # Once reached the target, move to the next step (Step 4)
                 self._grasp_step = 3
-                self._trajectory_index = 0  # Reset for next trajectory
-            return False  # Grasping not yet complete
+                self._trajectory_index = 0  # Reset for the next trajectory
+            return False  # Grasping process not yet complete
 
+        # Step 4: Close the gripper to grasp the object
         elif self._grasp_step == 3:
-            # Close the gripper
-            self.close_gripper()
-            # Check if the gripper has stopped moving
-            if self._is_gripper_stopped():
-                self._grasp_step = 4  # Move to the next step
-                # Generate trajectory for moving back to the position over the target (step 4)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, self.pose_over_target, 
-                                                                    start_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                    target_tcp_vel=[0, 0, 0, 0, 0, 0], 
-                                                                    estimate_speed=0.5)
-            return False  # Grasping not yet complete
+            self.close_gripper()  # Close the gripper
+            if self._is_gripper_stopped():  # Check if the gripper has finished moving
+                self._grasp_step = 4  # Move to the next step (post-grasp movement)
+                # Generate the trajectory to move to the post-grasp position (lifting up safely)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.5)
+            return False  # Grasping process not yet complete
 
+        # Step 5: Move to the post-grasp position
         elif self._grasp_step == 4:
-            # Move back to the position over the target using the generated TCP trajectory
+            # Move through the trajectory to the post-grasp position
             if self._trajectory_index < len(self._tcp_trajectory):
                 current_setpoint = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(current_setpoint)  # Set current setpoint for the TCP
+                self.set_tcp_pose_target(current_setpoint)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
-                # Once reached the final point, the grasping process is complete
-                del self._grasp_step  # Cleanup
+                # Once reached, the grasping process is complete
+                del self._grasp_step  # Cleanup the process state
                 del self._tcp_trajectory
                 del self._trajectory_index
                 return True  # Grasping process is complete
 
-        return False  # Grasping process is not complete
+        return False  # Grasping process not yet complete
     
-    def throw(self, tcp_target_pose, tcp_target_velocity, num_subtargets=10):
+    def throw(self, tcp_target_pose, tcp_target_velocity, deceleration_distance=0.2, estimate_speed=0.5):
         """
-        Perform a throwing action at the target TCP pose with a specific velocity.
+        Perform a throwing action with three stages: 
+        1. Move to the release point with a target velocity.
+        2. Release the object by opening the gripper while maintaining the current velocity.
+        3. Decelerate the arm after the release.
 
         Args:
-            tcp_target_pose (list): Target TCP pose as [position, orientation].
-            tcp_target_velocity (list): Target velocity for the TCP.
-            num_subtargets (int): Number of subtargets for smooth trajectory.
+            tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
+            tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
+            deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
+            deceleration_time (float): Time duration for the deceleration phase.
+            estimate_speed (float): Speed used to estimate the time for trajectory generation.
         
         Returns:
             bool: True if the throwing process is completed, False otherwise.
         """
         # Initialize or continue the throwing process
         if not hasattr(self, '_throw_step'):
+            # Stage 0: Set initial conditions for the throwing process
             self._throw_step = 0  # Initialize the throw step
             self.tcp_target_pose = tcp_target_pose
             self.tcp_target_velocity = tcp_target_velocity
 
-        if self._throw_step == 0:
-            # Move to the target pose with subtargets
-            if self.set_tcp_trajectory(self.tcp_target_pose, num_subtargets=num_subtargets, 
-                                    position_tolerance=0.05, orientation_tolerance=0.05, 
-                                    final_position_tolerance=0.01, final_orientation_tolerance=0.01):
-                self._throw_step = 1  # Move to the next step
-            return False  # Throwing not yet complete
-
-        elif self._throw_step == 1:
-            # Apply velocity to the TCP
-            p.setJointMotorControlArray(
-                self.robot_id, self.arm_controllable_joints,
-                p.VELOCITY_CONTROL,
-                targetVelocities=self.tcp_target_velocity,
-                forces=[joint.max_force for joint in self.joints if joint.controllable]
+            # Stage 1: Generate the trajectory towards the release point (target pose with velocity)
+            self._tcp_trajectory = self._generate_tcp_trajectory(
+                self.get_tcp_pose(),            # Start at the current TCP pose
+                self.tcp_target_pose,           # Move to the target pose
+                start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # Starting velocity is zero (from rest)
+                target_tcp_vel=tcp_target_velocity,  # End with the specified target velocity
+                estimate_speed=estimate_speed   # Use estimated speed for trajectory timing
             )
-            self._throw_step = 2  # Move to the next step
-            return False  # Throwing not yet complete
+            self._trajectory_index = 0  # Initialize the trajectory index
 
-        elif self._throw_step == 2:
+        # Stage 1: Move to the release point with the target velocity
+        if self._throw_step == 0:
+            if self._trajectory_index < len(self._tcp_trajectory):
+                # Move step by step along the trajectory towards the release point
+                current_setpoint = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(current_setpoint)  # Set the TCP to the current subtarget
+                self._trajectory_index += 1
+            else:
+                # Once the release point is reached, switch to velocity control for release
+                self._throw_step = 1
+                return False  # Throwing not yet complete
+
+        # Stage 2: Release the object by opening the gripper while maintaining the velocity
+        elif self._throw_step == 1:
+            # Apply velocity control using the velocity IK method
+            joint_velocities = self.velocity_ik(self.tcp_target_velocity[:3], self.tcp_target_velocity[3:])
+            self.set_arm_joint_velocity_target(joint_velocities)
+
             # Open the gripper to release the object
             self.open_gripper()
-            if self._is_gripper_stopped():
-                del self._throw_step  # Throwing process is complete, cleanup
-                return True  # Throwing process is complete
+            if self._is_gripper_stopped():  # Check if the gripper has fully opened
+                self._throw_step = 2  # Move to the next step (deceleration phase)
+                
+                # Update the TCP release pose based on the current state
+                release_pose = self.get_tcp_pose()
+
+                # Calculate the deceleration pose based on the current release point and velocity
+                normalized_velocity = np.array(self.tcp_target_velocity[:3]) / np.linalg.norm(self.tcp_target_velocity[:3])  # Normalize linear velocity
+                deceleration_position = np.array(release_pose[0]) + deceleration_distance * normalized_velocity
+                self.tcp_deceleration_pose = (deceleration_position.tolist(), release_pose[1])  # Keep the orientation same as release
+
+                # Generate trajectory for decelerating the arm (switch back to position control)
+                self._tcp_trajectory = self._generate_tcp_trajectory(
+                    release_pose,                 # Start deceleration from the actual release pose
+                    self.tcp_deceleration_pose,   # End at the calculated deceleration pose
+                    start_tcp_vel=self.tcp_target_velocity,  # Start with the velocity at release
+                    target_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # End at zero velocity (full stop)
+                    estimate_speed=estimate_speed  # Use estimated speed to calculate the deceleration trajectory
+                )
+                self._trajectory_index = 0  # Initialize trajectory index for the deceleration phase
             return False  # Throwing not yet complete
 
+        # Stage 3: Decelerate the arm after the release
+        elif self._throw_step == 2:
+            # Switch back to position control for the deceleration trajectory
+            if self._trajectory_index < len(self._tcp_trajectory):
+                current_setpoint = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(current_setpoint)  # Set the TCP to the current subtarget
+                self._trajectory_index += 1
+            else:
+                # Once deceleration is complete, the throwing process is done
+                del self._throw_step  # Cleanup after completion
+                del self._tcp_trajectory
+                del self._trajectory_index
+                return True  # Throwing process is complete
+
         return False  # Throwing process is not complete
+
     
-    def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel, target_tcp_vel, estimate_speed=0.5):
+    def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel=None, target_tcp_vel=None, estimate_speed=0.5):
         """
         Generates a TCP trajectory from start to target pose using quintic polynomial interpolation for both position
         and orientation (converted to Euler angles), considering velocity information.
@@ -600,10 +542,10 @@ class BaseRobot:
         target_quat = target_rot.as_quat()
         
         # Extract start and target translational and rotational velocities
-        start_trans_vel = np.array(start_tcp_vel[:3])
-        target_trans_vel = np.array(target_tcp_vel[:3])
-        start_rot_vel = np.array(start_tcp_vel[3:])
-        target_rot_vel = np.array(target_tcp_vel[3:])
+        start_trans_vel = np.array(start_tcp_vel[0]) if start_tcp_vel is not None else np.zeros([3])
+        target_trans_vel = np.array(target_tcp_vel[0]) if target_tcp_vel is not None else np.zeros([3])  
+        start_rot_vel = np.array(start_tcp_vel[1]) if start_tcp_vel is not None else np.zeros([3])
+        target_rot_vel = np.array(target_tcp_vel[1]) if target_tcp_vel is not None else np.zeros([3])
         
         # Estimate the time needed based on the distance and given speed
         distance = np.linalg.norm(target_pos - start_pos)
