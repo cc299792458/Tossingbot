@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from math_utils import rotation_matrix_to_quaternion
 
+############### Observation for TossObjects env ###############
 def capture_rgbd_image(cam_target_pos=[0, 0, 0], cam_distance=2, width=640, height=480,
                        cam_yaw=90, cam_pitch=-90, cam_roll=0, fov=60, aspect=1.0, near=0.01, far=10.0):
     """
@@ -44,7 +45,7 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     depth_valid, rgb_valid = depth_flat[valid_mask], rgb_flat[valid_mask]
 
     x_camera = (u_valid - cx) / fx * depth_valid
-    y_camera = -(v_valid - cy) / fy * depth_valid
+    y_camera = -(v_valid - cy) / fy * depth_valid   # # Invert y-axis to match PyBullet's upward direction
     z_camera = -depth_valid # Invert z-axis to match PyBullet's coordinate system
     
     point_cloud = np.stack((x_camera, y_camera, z_camera), axis=1)
@@ -59,6 +60,10 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
+def point_cloud_to_height_map(point_cloud, colors):
+    pass
+
+############ Visualization ############
 def initialize_plots(figsize=(12, 6)):
     """
     Initialize the matplotlib figure for real-time display.
@@ -137,6 +142,7 @@ def draw_camera_axes(camera_pos, camera_orientation, axis_length=0.2):
         world_axis = np.dot(rot_matrix, np.array(axes[axis])) * axis_length
         p.addUserDebugLine(camera_pos, camera_pos + world_axis, colors[axis])
 
+############### Transformation ############### 
 def extract_camera_position_from_view_matrix(view_matrix):
     """
     Extract the camera position from the view matrix.
@@ -166,7 +172,7 @@ if __name__ == '__main__':
 
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
     width, height = 64 * 4, 64 * 3
-    cam_yaw, cam_pitch, cam_roll = 90, -90, 90
+    cam_yaw, cam_pitch, cam_roll = 90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
 
