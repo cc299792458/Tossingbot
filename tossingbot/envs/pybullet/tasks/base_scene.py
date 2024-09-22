@@ -71,6 +71,8 @@ class BaseScene:
         self.reset_robot()
         self.reset_objects()
 
+        obs = self.get_observation()
+
     def reset_robot(self):
         """
         Abstract method to reset the robot to its initial state.
@@ -94,9 +96,19 @@ class BaseScene:
             action (list or array): Action to be performed in the environment.
             
         Returns:
-            tuple: Typically returns (next_state, reward, terminated, truncated, info) for reinforcement learning tasks.
+            tuple: Typically returns (next_obs, reward, terminated, truncated, info) for reinforcement learning tasks.
         """
-        self.step_simulation()
+        flag = True
+        while flag:
+            self.step_simulation()
+
+        next_obs = self.get_observation()
+        reward = self.get_reward()
+        terminated = self.is_terminated()
+        truncated = self.is_truncated()
+        info = self.get_info()
+
+        return next_obs, reward, terminated, truncated, info
 
     def step_simulation(self):
         """
@@ -108,6 +120,23 @@ class BaseScene:
         if self.use_gui:
             time.sleep(self.timestep)
 
+    def get_observation(self):
+        raise NotImplementedError
+
+    def get_reward(self):
+        raise NotImplementedError
+
+    def is_terminated(self):
+        raise NotImplementedError
+
+    def is_truncated(self):
+        raise NotImplementedError
+
+    def get_info(self):
+        return {}
+
+    ############### Visualzation ###############
+
     ############### Misc ###############
     def close_simulation(self):
         """
@@ -115,21 +144,3 @@ class BaseScene:
         """
         if self.physics_client is not None:
             p.disconnect(self.physics_client)
-
-# if __name__ == '__main__':
-#     # Connect to physics simulation
-#     physics_client_id = p.connect(p.GUI)
-    
-#     # Set search path for URDFs
-#     p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    
-#     # Call the function to set up the scene
-#     plane_id, workspace_ids, box_ids, object_ids, robot = setup_scene()
-    
-#     # Main simulation loop
-#     while True:
-#         p.stepSimulation()
-#         time.sleep(1./240.)
-
-#     # Disconnect from the simulation when done
-#     p.disconnect()

@@ -1,8 +1,11 @@
 import time
+import math
 import numpy as np
 import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
+
+from math_utils import rotation_matrix_to_quaternion
 
 # TODO: debug when pitch is not 90
 
@@ -179,7 +182,7 @@ def initialize_plots(figsize=(12, 6)):
 
     return fig, axes
 
-def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim=None, zlim=None):
+def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=[-1.0, 1.0], ylim=[-1.0, 1.0], zlim=[0.0, 2.0]):
     """
     Plot the RGB image and Point Cloud in a single figure with two subplots.
 
@@ -222,6 +225,159 @@ def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim
     plt.draw()
     plt.pause(0.001)  # Pause briefly to allow the plot to update in real-time
 
+def draw_camera_frustum(camera_pos, camera_orientation, fov, aspect_ratio, near, far):
+    """
+    Visualize the camera frustum in the PyBullet environment using debug lines.
+    
+    Args:
+        camera_pos (list): Camera position [x, y, z].
+        camera_orientation (list): Camera orientation as quaternion.
+        fov (float): Field of view in degrees.
+        aspect_ratio (float): Aspect ratio (width/height).
+        near (float): Near clipping plane distance.
+        far (float): Far clipping plane distance.
+    """
+    # Convert FOV from degrees to radians
+    fov_rad = fov * (math.pi / 180.0)
+
+    # Calculate frustum dimensions at near and far planes
+    near_height = 2 * near * math.tan(fov_rad / 2)
+    near_width = near_height * aspect_ratio
+    far_height = 2 * far * math.tan(fov_rad / 2)
+    far_width = far_height * aspect_ratio
+
+    # Define frustum corners in the camera's local space
+    near_plane = np.array([
+        [near_width / 2, near_height / 2, -near],
+        [-near_width / 2, near_height / 2, -near],
+        [-near_width / 2, -near_height / 2, -near],
+        [near_width / 2, -near_height / 2, -near]
+    ])
+
+    far_plane = np.array([
+        [far_width / 2, far_height / 2, -far],
+        [-far_width / 2, far_height / 2, -far],
+        [-far_width / 2, -far_height / 2, -far],
+        [far_width / 2, -far_height / 2, -far]
+    ])
+
+    # Convert the orientation quaternion to a rotation matrix
+    rot_matrix = np.array(p.getMatrixFromQuaternion(camera_orientation)).reshape(3, 3)
+
+    # Rotate and translate the frustum corners from local to world coordinates
+    near_plane_world = [np.dot(rot_matrix, corner) + camera_pos for corner in near_plane]
+    far_plane_world = [np.dot(rot_matrix, corner) + camera_pos for corner in far_plane]
+
+    # Draw frustum lines using PyBullet debug lines
+    for i in range(4):
+        # Near plane lines
+        p.addUserDebugLine(near_plane_world[i], near_plane_world[(i + 1) % 4], [0, 1, 0])
+        # Far plane lines
+        p.addUserDebugLine(far_plane_world[i], far_plane_world[(i + 1) % 4], [0, 1, 0])
+        # Lines connecting near and far planes
+        p.addUserDebugLine(near_plane_world[i], far_plane_world[i], [0, 1, 0])
+
+def draw_camera_axes(camera_pos, camera_orientation, axis_length=0.2):
+    """
+    Draw the camera's local coordinate frame (X, Y, Z axes) in the PyBullet environment.
+    
+    Args:
+        camera_pos (list): Camera position [x, y, z].
+        camera_orientation (list): Camera orientation as quaternion.
+        axis_length (float): Length of the axes lines to be drawn.
+    """
+    # Convert the camera orientation quaternion to a rotation matrix
+    rot_matrix = np.array(p.getMatrixFromQuaternion(camera_orientation)).reshape(3, 3)
+
+    # Define unit vectors for the camera's local coordinate frame
+    x_axis = np.array([1, 0, 0])  # Local X-axis (red)
+    y_axis = np.array([0, 1, 0])  # Local Y-axis (green)
+    z_axis = np.array([0, 0, 1])  # Local Z-axis (blue)
+
+    # Transform the unit vectors to world coordinates using the rotation matrix
+    x_axis_world = np.dot(rot_matrix, x_axis) * axis_length
+    y_axis_world = np.dot(rot_matrix, y_axis) * axis_length
+    z_axis_world = np.dot(rot_matrix, z_axis) * axis_length
+
+    # Draw the axes in PyBullet
+    p.addUserDebugLine(camera_pos, camera_pos + x_axis_world, [1, 0, 0])  # X-axis (red)
+    p.addUserDebugLine(camera_pos, camera_pos + y_axis_world, [0, 1, 0])  # Y-axis (green)
+    p.addUserDebugLine(camera_pos, camera_pos + z_axis_world, [0, 0, 1])  # Z-axis (blue)
+
+def extract_camera_position_from_view_matrix(view_matrix):
+    """
+    Extract the camera position from the view matrix considering OpenGL conventions.
+    
+    Args:
+        view_matrix (list): The view matrix as a flat list of 16 elements.
+    
+    Returns:
+        list: The camera position [x, y, z].
+    """
+    # Convert the view matrix to a numpy array and reshape into a 4x4 matrix
+    view_mat = np.array(view_matrix).reshape(4, 4, order='F')  # Column-major order
+
+    # Extract the rotation matrix (upper-left 3x3)
+    rotation_matrix = view_mat[:3, :3]
+
+    # Extract the translation vector (first 3 elements of the fourth column)
+    translation_vector = view_mat[:3, 3]
+
+    # The camera position is given by:
+    # camera_pos = -rotation_matrix.T @ translation_vector
+    camera_pos = -np.dot(rotation_matrix.T, translation_vector)
+
+    return camera_pos.tolist()
+
+def extract_camera_position_from_view_matrix(view_matrix):
+    """
+    Extract the camera position from the view matrix considering OpenGL conventions.
+    
+    Args:
+        view_matrix (list): The view matrix as a flat list of 16 elements.
+    
+    Returns:
+        list: The camera position [x, y, z].
+    """
+    # Convert the view matrix to a numpy array and reshape into a 4x4 matrix
+    view_mat = np.array(view_matrix).reshape(4, 4, order='F')  # Column-major order
+
+    # Extract the rotation matrix (upper-left 3x3)
+    rotation_matrix = view_mat[:3, :3]
+
+    # Extract the translation vector (first 3 elements of the fourth column)
+    translation_vector = view_mat[:3, 3]
+
+    # The camera position is given by:
+    # camera_pos = -rotation_matrix.T @ translation_vector
+    camera_pos = -np.dot(rotation_matrix.T, translation_vector)
+
+    return camera_pos.tolist()
+
+def extract_camera_orientation_from_view_matrix(view_matrix):
+    """
+    Extract the camera orientation quaternion from the view matrix.
+    
+    Args:
+        view_matrix (list): The view matrix as a flat list of 16 elements.
+    
+    Returns:
+        list: The camera orientation as a quaternion [x, y, z, w].
+    """
+    # Convert the view matrix to a numpy array and reshape into a 4x4 matrix
+    view_mat = np.array(view_matrix).reshape(4, 4, order='F')  # Column-major order
+
+    # Extract the rotation matrix (upper-left 3x3)
+    rotation_matrix = view_mat[:3, :3]
+
+    # Transpose the rotation matrix to get the correct orientation
+    rotation_matrix_T = rotation_matrix.T
+
+    # Convert rotation matrix to quaternion
+    quaternion = rotation_matrix_to_quaternion(rotation_matrix_T)
+
+    return quaternion
+
 if __name__ == '__main__':
     # Initialize PyBullet simulation
     physicsClient = p.connect(p.GUI)
@@ -239,9 +395,32 @@ if __name__ == '__main__':
     # Camera parameters
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
     width, height = 64 * 4, 64 * 3  # resolution
-    cam_yaw, cam_pitch, cam_roll = 90, -90, 0
+    cam_yaw, cam_pitch, cam_roll = 90, -45, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
+
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(
+        cameraTargetPosition=cam_target_pos,
+        distance=cam_distance,
+        yaw=cam_yaw,
+        pitch=cam_pitch,
+        roll=cam_roll,
+        upAxisIndex=2
+    )
+
+    camera_pos = extract_camera_position_from_view_matrix(view_matrix)
+    camera_orientation = extract_camera_orientation_from_view_matrix(view_matrix)
+
+    draw_camera_frustum(
+        camera_pos=camera_pos,
+        camera_orientation=camera_orientation,
+        fov=fov,
+        aspect_ratio=aspect,
+        near=near,
+        far=far
+    )
+
+    draw_camera_axes(camera_pos=camera_pos, camera_orientation=camera_orientation)
 
     # Simulation loop
     for _ in range(1000):

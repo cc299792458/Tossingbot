@@ -1,7 +1,4 @@
-import time
 import random
-import pybullet as p
-import pybullet_data
 
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
@@ -81,6 +78,7 @@ class TossObjects(BaseScene):
 
         super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
 
+    ############### Initialization ###############
     def load_scene(self):
         """
         Load the tossing object scene in PyBullet.
@@ -201,6 +199,7 @@ class TossObjects(BaseScene):
                 visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
             )
 
+    ############### Reset ###############
     def reset_robot(self):
         """
         Reset the robot's position.
@@ -227,6 +226,48 @@ class TossObjects(BaseScene):
             # Create a sphere for now (extendable to other object types)
             self.object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
 
+    ############### Step ###############
+    def get_observation(self):
+        # Capture rgbd image
+        rgb_img, depth_img, view_matrix = capture_rgbd_image(
+            cam_target_pos=self.camera_config['cam_target_pos'], 
+            cam_distance=self.camera_config['cam_distance'], 
+            width=self.camera_config['width'], 
+            height=self.camera_config['height'],
+            cam_yaw=self.camera_config['cam_yaw'], 
+            cam_pitch=self.camera_config['cam_pitch'], 
+            cam_roll=self.camera_config['cam_roll'],
+            fov=self.camera_config['fov'], 
+            aspect=self.camera_config['aspect'], 
+            near=self.camera_config['near'], 
+            far=self.camera_config['far']
+        )
+
+        # Generate point cloud with color
+        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
+                                                              rgb_img, 
+                                                              fov=self.camera_config['fov'], 
+                                                              aspect=self.camera_config['aspect'], 
+                                                              width=self.camera_config['width'], 
+                                                              height=self.camera_config['height'], 
+                                                              view_matrix=view_matrix, 
+                                                              to_world=True)
+
+
+    def get_reward(self):
+        raise NotImplementedError
+
+    def is_terminated(self):
+        raise NotImplementedError
+
+    def is_truncated(self):
+        raise NotImplementedError
+
+    def get_info(self):
+        return {}
+    
+    ############### Visulization ###############
+    
 
 if __name__ == '__main__':
     set_seed()
@@ -236,37 +277,13 @@ if __name__ == '__main__':
     fig, axes = initialize_plots()
     while True:
         env.step(action=None)
-        # Capture image
-        rgb_img, depth_img, view_matrix = capture_rgbd_image(
-            cam_target_pos=env.camera_config['cam_target_pos'], 
-            cam_distance=env.camera_config['cam_distance'], 
-            width=env.camera_config['width'], 
-            height=env.camera_config['height'],
-            cam_yaw=env.camera_config['cam_yaw'], 
-            cam_pitch=env.camera_config['cam_pitch'], 
-            cam_roll=env.camera_config['cam_roll'],
-            fov=env.camera_config['fov'], 
-            aspect=env.camera_config['aspect'], 
-            near=env.camera_config['near'], 
-            far=env.camera_config['far']
-        )
-
-        # Generate point cloud with color
-        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
-                                                              rgb_img, 
-                                                              fov=env.camera_config['fov'], 
-                                                              aspect=env.camera_config['aspect'], 
-                                                              width=env.camera_config['width'], 
-                                                              height=env.camera_config['height'], 
-                                                              view_matrix=view_matrix, 
-                                                              to_world=True)
-
-        # Plot rgbd image and pointcloud
-        plot_rgb_pointcloud(rgb_img, 
-                            point_cloud, 
-                            colors, 
-                            fig, 
-                            axes, 
-                            xlim=env.scene_config['workspace_xlim'], 
-                            ylim=env.scene_config['workspace_ylim'], 
-                            zlim=env.scene_config['workspace_zlim'])
+        
+        # # Plot rgbd image and pointcloud
+        # plot_rgb_pointcloud(rgb_img, 
+        #                     point_cloud, 
+        #                     colors, 
+        #                     fig, 
+        #                     axes, 
+        #                     xlim=env.scene_config['workspace_xlim'], 
+        #                     ylim=env.scene_config['workspace_ylim'], 
+        #                     zlim=env.scene_config['workspace_zlim'])

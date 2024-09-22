@@ -48,3 +48,47 @@ def pose_distance(pose1, pose2):
         'position_distance': position_distance,
         'orientation_distance': orientation_distance
     }
+
+def rotation_matrix_to_quaternion(rotation_matrix):
+    """
+    Converts a 3x3 rotation matrix to a quaternion.
+    
+    Args:
+        rotation_matrix (np.ndarray): 3x3 rotation matrix.
+        
+    Returns:
+        list: Quaternion [x, y, z, w].
+    """
+    # Ensure the matrix is 3x3
+    assert rotation_matrix.shape == (3, 3), "Rotation matrix must be 3x3"
+
+    # Extract elements from the rotation matrix
+    R = rotation_matrix
+    trace = np.trace(R)
+
+    if trace > 0:
+        s = 2.0 * np.sqrt(1.0 + trace)
+        qw = 0.25 * s
+        qx = (R[2, 1] - R[1, 2]) / s
+        qy = (R[0, 2] - R[2, 0]) / s
+        qz = (R[1, 0] - R[0, 1]) / s
+    elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        qw = (R[2, 1] - R[1, 2]) / s
+        qx = 0.25 * s
+        qy = (R[0, 1] + R[1, 0]) / s
+        qz = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        qw = (R[0, 2] - R[2, 0]) / s
+        qx = (R[0, 1] + R[1, 0]) / s
+        qy = 0.25 * s
+        qz = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        qw = (R[1, 0] - R[0, 1]) / s
+        qx = (R[0, 2] + R[2, 0]) / s
+        qy = (R[1, 2] + R[2, 1]) / s
+        qz = 0.25 * s
+
+    return [qx, qy, qz, qw]

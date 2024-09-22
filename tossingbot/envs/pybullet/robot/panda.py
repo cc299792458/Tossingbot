@@ -168,7 +168,7 @@ if __name__ == '__main__':
     create_plane()
     position = [0.3, -0.3, 0.03]    
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
-    object_id = create_sphere(radius=0.02, position=position, mass=0.2)
+    object_id = create_sphere(radius=0.03, position=position, mass=0.2)
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
     grasp_pose = (position, [1.0, 0.0, 0.0, 0.0])
     post_grasp_pose = ([0.3, 0.0, 0.4], [1.0, 0.0, 0.0, 0.0])
