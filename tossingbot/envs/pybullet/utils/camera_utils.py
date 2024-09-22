@@ -5,7 +5,7 @@ import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
 
-from math_utils import rotation_matrix_to_quaternion
+from tossingbot.envs.pybullet.utils.math_utils import rotation_matrix_to_quaternion
 
 ############### Observation for TossObjects env ###############
 def capture_rgbd_image(cam_target_pos=[0, 0, 0], cam_distance=2, width=640, height=480,
@@ -60,11 +60,13 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
-def point_cloud_to_height_map(point_cloud, colors):
-    pass
+def point_cloud_to_height_map(point_cloud, colors, workspace_width, workspace_length, workspace_position):
+    height_map = None
+
+    return height_map
 
 ############ Visualization ############
-def initialize_plots(figsize=(12, 6)):
+def initialize_visual_plots(figsize=(12, 6)):
     """
     Initialize the matplotlib figure for real-time display.
     """
@@ -103,13 +105,13 @@ def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim
     plt.draw()
     plt.pause(0.001)
 
-def draw_camera_frustum(camera_pos, camera_orientation, fov, aspect_ratio, near, far):
+def draw_camera_frustum(camera_pos, camera_orientation, fov, aspect, near, far):
     """
     Visualize the camera frustum in PyBullet.
     """
     fov_rad = math.radians(fov)
     near_height, far_height = 2 * near * math.tan(fov_rad / 2), 2 * far * math.tan(fov_rad / 2)
-    near_width, far_width = near_height * aspect_ratio, far_height * aspect_ratio
+    near_width, far_width = near_height * aspect, far_height * aspect
     
     near_plane = np.array([[near_width / 2, near_height / 2, -near],
                            [-near_width / 2, near_height / 2, -near],
@@ -130,7 +132,7 @@ def draw_camera_frustum(camera_pos, camera_orientation, fov, aspect_ratio, near,
         p.addUserDebugLine(far_plane_world[i], far_plane_world[(i + 1) % 4], [0, 1, 0])
         p.addUserDebugLine(near_plane_world[i], far_plane_world[i], [0, 1, 0])
 
-def draw_camera_axes(camera_pos, camera_orientation, axis_length=0.2):
+def draw_camera_axes(camera_pos, camera_orientation, axis_length=0.1):
     """
     Draw the camera's local coordinate frame (X, Y, Z axes) in the PyBullet environment.
     """
@@ -141,6 +143,14 @@ def draw_camera_axes(camera_pos, camera_orientation, axis_length=0.2):
     for axis in axes:
         world_axis = np.dot(rot_matrix, np.array(axes[axis])) * axis_length
         p.addUserDebugLine(camera_pos, camera_pos + world_axis, colors[axis])
+
+def visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far):
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, upAxisIndex=2)
+    camera_pos = extract_camera_position_from_view_matrix(view_matrix)
+    camera_orientation = extract_camera_orientation_from_view_matrix(view_matrix)
+
+    draw_camera_frustum(camera_pos, camera_orientation, fov, aspect, near, far)
+    draw_camera_axes(camera_pos, camera_orientation)
 
 ############### Transformation ############### 
 def extract_camera_position_from_view_matrix(view_matrix):
@@ -168,7 +178,7 @@ if __name__ == '__main__':
     p.loadURDF("plane.urdf")
     p.loadURDF("r2d2.urdf", [0, 0, 1])
 
-    fig, axes = initialize_plots()
+    fig, axes = initialize_visual_plots()
 
     cam_target_pos, cam_distance = [0, 0, 0.75], 2
     width, height = 64 * 4, 64 * 3
@@ -176,20 +186,7 @@ if __name__ == '__main__':
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
 
-    view_matrix = p.computeViewMatrixFromYawPitchRoll(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, upAxisIndex=2)
-    camera_pos = extract_camera_position_from_view_matrix(view_matrix)
-    camera_orientation = extract_camera_orientation_from_view_matrix(view_matrix)
-
-    draw_camera_frustum(
-        camera_pos=camera_pos,
-        camera_orientation=camera_orientation,
-        fov=fov,
-        aspect_ratio=aspect,
-        near=near,
-        far=far
-    )
-
-    draw_camera_axes(camera_pos=camera_pos, camera_orientation=camera_orientation)
+    visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
 
     # Simulation loop
     for _ in range(1000):

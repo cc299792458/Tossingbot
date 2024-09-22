@@ -100,7 +100,9 @@ class BaseScene:
         """
         flag = True
         while flag:
-            self.step_simulation()
+            self.pre_simulation_step()
+            self.simulation_step()
+            self.post_simulation_step()
 
         next_obs = self.get_observation()
         reward = self.get_reward()
@@ -110,7 +112,7 @@ class BaseScene:
 
         return next_obs, reward, terminated, truncated, info
 
-    def step_simulation(self):
+    def simulation_step(self):
         """
         Advances the simulation by one time step.
         """
@@ -119,6 +121,12 @@ class BaseScene:
         # Only add a time delay if the GUI is enabled to simulate real-time behavior
         if self.use_gui:
             time.sleep(self.timestep)
+
+    def pre_simulation_step(self):
+        pass
+
+    def post_simulation_step(self):
+        pass
 
     def get_observation(self):
         raise NotImplementedError

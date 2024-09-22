@@ -3,11 +3,32 @@ import random
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
 from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
-from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_capsule, create_cylinder, create_sphere
-from tossingbot.envs.pybullet.utils.camera_utils import capture_rgbd_image, depth_to_point_cloud_with_color, initialize_plots, plot_rgb_pointcloud
+from tossingbot.envs.pybullet.utils.objects_utils import (
+    create_box, 
+    create_capsule, 
+    create_cylinder, 
+    create_sphere
+)
+from tossingbot.envs.pybullet.utils.camera_utils import (
+    visualize_camera,
+    capture_rgbd_image, 
+    point_cloud_to_height_map,
+    depth_to_point_cloud_with_color, 
+    initialize_visual_plots,
+    plot_rgb_pointcloud,
+)
 
 class TossObjects(BaseScene):
-    def __init__(self, timestep=1/240, gravity=-9.81, use_gui=True, scene_config=None, robot_config=None, objects_config=None, camera_config=None):
+    def __init__(self, 
+             timestep=1/240, 
+             gravity=-9.81, 
+             use_gui=True, 
+             visualize_config=None,
+             scene_config=None, 
+             robot_config=None, 
+             objects_config=None, 
+             camera_config=None,
+        ):
         """
         Initialize the TossObjects scene.
 
@@ -15,11 +36,21 @@ class TossObjects(BaseScene):
             timestep (float): Time step for the simulation.
             gravity (float): Gravity applied to the scene.
             use_gui (bool): Whether to run the simulation in GUI mode or headless mode.
+            visualize_config (dict): Configuration for visualization options.
             scene_config (dict): Configuration for the scene setup (e.g., dimensions, objects).
             robot_config (dict): Configuration for the robot setup (e.g., robot type, starting position).
             objects_config (dict): Configuration for the objects in the scene.
             camera_config (dict): Configuration for the camera setup.
         """
+        # Default visualize configuration
+        default_visualize_config = {
+            "visualize_coordinate_frames": True,
+            "visualize_camera": True,
+            "visualize_visual_plots": False,
+        }
+        if visualize_config is not None:
+            default_visualize_config.update(visualize_config)
+        self.visualize_config = default_visualize_config
         # Default scene configuration
         default_scene_config = {
             "workspace_length": 0.3,
@@ -44,7 +75,7 @@ class TossObjects(BaseScene):
             "base_position": [0.0, 0.0, 0.0],
             "base_orientation": [0.0, 0.0, 0.0],
             "robot_type": 'panda',
-            "visualize_coordinate_frames": use_gui,
+            "visualize_coordinate_frames": use_gui and self.visualize_config['visualize_coordinate_frames'],
         }
         if robot_config is not None:
             default_robot_config.update(robot_config)
@@ -62,10 +93,10 @@ class TossObjects(BaseScene):
         default_camera_config = {
             "cam_target_pos": [*self.scene_config['workspace_position'], 0.0],
             "cam_distance": self.scene_config['workspace_length'] / 2,
-            "width": 64 * 3,  # 192x144 resolution
-            "height": 48 * 3,
-            "cam_yaw": 90,  # Can be adjusted
-            "cam_pitch": -90,  # Can be adjusted
+            "width": 640,
+            "height": 480,
+            "cam_yaw": 90,
+            "cam_pitch": -90,
             "cam_roll": 0,
             "fov": 90,
             "aspect": 1.33,
@@ -77,6 +108,22 @@ class TossObjects(BaseScene):
         self.camera_config = default_camera_config
 
         super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
+
+        if use_gui and self.visualize_config['visualize_camera']:
+            visualize_camera(
+                cam_target_pos=self.camera_config['cam_target_pos'],
+                cam_distance=self.camera_config['cam_distance'],
+                cam_yaw=self.camera_config['cam_yaw'],
+                cam_pitch=self.camera_config['cam_pitch'],
+                cam_roll=self.camera_config['cam_roll'],
+                fov=self.camera_config['fov'],
+                aspect=self.camera_config['aspect'],
+                near=self.camera_config['near'],
+                far=self.camera_config['far'],
+            )
+        if use_gui and self.visualize_config['visualize_visual_plots']:
+            # Initialize the plots for real-time rgbd image, pointcloud and height map display
+            self.visual_plot_fig, self.visual_plot_axes = initialize_visual_plots()
 
     ############### Initialization ###############
     def load_scene(self):
@@ -227,7 +274,21 @@ class TossObjects(BaseScene):
             self.object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
 
     ############### Step ###############
+    def post_simulation_step(self):
+        if self.use_gui and self.visualize_config['visualize_visual_plots']:
+            rgb_img, depth_img, point_cloud, colors, height_map = self.get_visual_observation()
+            plot_rgb_pointcloud(
+                rgb_img=rgb_img, 
+                point_cloud=point_cloud, 
+                colors=colors,
+                fig=self.visual_plot_fig,
+                axes=self.visual_plot_axes,
+            )
+
     def get_observation(self):
+        rgb_img, depth_img, point_cloud, colors, height_map = self.get_visual_observation()
+    
+    def get_visual_observation(self):
         # Capture rgbd image
         rgb_img, depth_img, view_matrix = capture_rgbd_image(
             cam_target_pos=self.camera_config['cam_target_pos'], 
@@ -252,7 +313,46 @@ class TossObjects(BaseScene):
                                                               height=self.camera_config['height'], 
                                                               view_matrix=view_matrix, 
                                                               to_world=True)
+        
+        # Generate height map
+        height_map = point_cloud_to_height_map(point_cloud=point_cloud, 
+                                               colors=colors, 
+                                               workspace_width=self.scene_config['workspace_width'],
+                                               workspace_length=self.scene_config['workspace_length'],
+                                               workspace_position=self.scene_config['workspace_position'])
+        # Capture rgbd image
+        rgb_img, depth_img, view_matrix = capture_rgbd_image(
+            cam_target_pos=self.camera_config['cam_target_pos'], 
+            cam_distance=self.camera_config['cam_distance'], 
+            width=self.camera_config['width'], 
+            height=self.camera_config['height'],
+            cam_yaw=self.camera_config['cam_yaw'], 
+            cam_pitch=self.camera_config['cam_pitch'], 
+            cam_roll=self.camera_config['cam_roll'],
+            fov=self.camera_config['fov'], 
+            aspect=self.camera_config['aspect'], 
+            near=self.camera_config['near'], 
+            far=self.camera_config['far']
+        )
 
+        # Generate point cloud with color
+        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
+                                                              rgb_img, 
+                                                              fov=self.camera_config['fov'], 
+                                                              aspect=self.camera_config['aspect'], 
+                                                              width=self.camera_config['width'], 
+                                                              height=self.camera_config['height'], 
+                                                              view_matrix=view_matrix, 
+                                                              to_world=True)
+        
+        # Generate height map
+        height_map = point_cloud_to_height_map(point_cloud=point_cloud, 
+                                               colors=colors, 
+                                               workspace_width=self.scene_config['workspace_width'],
+                                               workspace_length=self.scene_config['workspace_length'],
+                                               workspace_position=self.scene_config['workspace_position'])
+        
+        return rgb_img, depth_img, point_cloud, colors, height_map
 
     def get_reward(self):
         raise NotImplementedError
@@ -267,23 +367,11 @@ class TossObjects(BaseScene):
         return {}
     
     ############### Visulization ###############
-    
+
 
 if __name__ == '__main__':
     set_seed()
     env = TossObjects()
     #####----- Main Loop -----#####
-    # Initialize the plots for real-time display
-    fig, axes = initialize_plots()
     while True:
         env.step(action=None)
-        
-        # # Plot rgbd image and pointcloud
-        # plot_rgb_pointcloud(rgb_img, 
-        #                     point_cloud, 
-        #                     colors, 
-        #                     fig, 
-        #                     axes, 
-        #                     xlim=env.scene_config['workspace_xlim'], 
-        #                     ylim=env.scene_config['workspace_ylim'], 
-        #                     zlim=env.scene_config['workspace_zlim'])
