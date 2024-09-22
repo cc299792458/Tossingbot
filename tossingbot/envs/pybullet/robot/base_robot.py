@@ -10,7 +10,7 @@ class BaseRobot:
     The base class for robots
     """
 
-    def __init__(self, base_position, base_orientation, robot_type='ur5_robotiq85'):
+    def __init__(self, base_position, base_orientation, robot_type='panda'):
         """
         Initialize the robot with its base position, orientation, and type.
         """

@@ -6,174 +6,130 @@ import pybullet_data
 from tossingbot.envs.pybullet.robot import UR5Robotiq85
 from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_sphere
 
-def setup_workspace(length=0.3, width=0.4, position=[0.55, 0.0]):
-    """
-    Create a workspace with walls in the simulation.
-    
-    :param length: Length of the workspace.
-    :param width: Width of the workspace.
-    :param position: Center position [x, y] of the workspace.
-    :return: List of box IDs for the workspace.
-    """
-    thickness = 0.01
-    height = 0.1
-    color = [0.8, 0.8, 0.8, 1.0]
-    box_ids = []
-    
-    # Base of the workspace
-    box_ids.append(create_box(half_extents=[length / 2, width / 2, thickness / 2], 
-                              position=[position[0], position[1], thickness / 2], 
-                              mass=0, color=color))
-    
-    # Walls of the workspace
-    box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
-                              position=[position[0] - length / 2, position[1], height / 2 + thickness], 
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
-                              position=[position[0], position[1] - width / 2, height / 2 + thickness], 
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
-                              position=[position[0] + length / 2, position[1], height / 2 + thickness], 
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
-                              position=[position[0], position[1] + width / 2, height / 2 + thickness], 
-                              mass=0, color=color))
-    
-    return box_ids
+import pybullet as p
 
-def setup_objects(workspace_length, workspace_width, workspace_position, n_object=1):
-    """
-    Randomly place objects in the workspace.
+class BaseScene:
+    def __init__(self, timestep=1/240, gravity=-9.81, use_gui=True):
+        """
+        Initialize the base simulation scene.
+
+        Args:
+            timestep (float): Time step for the simulation.
+            gravity (float): Gravity applied to the scene.
+            use_gui (bool): Whether to run the simulation in GUI mode or headless mode.
+        """
+        self.timestep = timestep
+        self.gravity = gravity
+        self.use_gui = use_gui
+
+        # Initialize the simulation
+        self.start_simulation()
+
+        # Load the ground plane and scene-specific elements
+        self.load_ground_plane()
+        self.load_scene()
+        self.load_robot()
+
+        # Reset scene to its initial state
+        self.reset()
     
-    :param workspace_length: Length of the workspace.
-    :param workspace_width: Width of the workspace.
-    :param workspace_position: Center position [x, y] of the workspace.
-    :param n_object: Number of objects to place in the workspace.
-    :return: List of object IDs.
-    """
-    margin = 0.1
-    object_ids = []
+    ############### Initialization ###############
+    def start_simulation(self):
+        """
+        Starts the PyBullet simulation in either GUI or headless mode.
+        """
+        self.physics_client = p.connect(p.GUI if self.use_gui else p.DIRECT)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        p.setGravity(0, 0, self.gravity)
+        p.setTimeStep(self.timestep)
+
+    def load_ground_plane(self):
+        """
+        Loads a flat ground plane into the simulation.
+        """
+        self.plane_id = p.loadURDF("plane.urdf")
+
+    def load_scene(self):
+        """
+        Abstract method for loading the scene configuration.
+        Should be implemented by subclasses based on scene setup.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    def load_robot(self):
+        """
+        Abstract method for loading the robot. 
+        Should be implemented by subclasses based on robot configuration.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
     
-    for i in range(n_object):
-        x = random.uniform(workspace_position[0] - workspace_length / 2 + margin, 
-                           workspace_position[0] + workspace_length / 2 - margin)
-        y = random.uniform(workspace_position[1] - workspace_width / 2 + margin, 
-                           workspace_position[1] + workspace_width / 2 - margin)
+    ############### Reset ###############
+    def reset(self):
+        """
+        Resets the robot and objects in the scene. Calls reset methods that should be implemented by subclasses.
+        """
+        self.reset_robot()
+        self.reset_objects()
+
+    def reset_robot(self):
+        """
+        Abstract method to reset the robot to its initial state.
+        Should be implemented by subclasses.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
+    
+    def reset_objects(self):
+        """
+        Abstract method to reset or reload objects in the scene.
+        Should be implemented by subclasses.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    ############### Step ###############
+    def step(self, action):
+        """
+        Takes an action in the environment and progresses the simulation.
         
-        # Create a sphere for now (extendable to other object types)
-        object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
+        Args:
+            action (list or array): Action to be performed in the environment.
+            
+        Returns:
+            tuple: Typically returns (next_state, reward, terminated, truncated, info) for reinforcement learning tasks.
+        """
+        self.step_simulation()
 
-    return object_ids
-
-def setup_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=4, n_cols=3, position=[0.0, 0.0]):
-    """
-    Create a grid of hollow boxes separated by dividers using thin box walls.
-    
-    :param length: Length of each individual box (x-dimension).
-    :param width: Width of each individual box (y-dimension).
-    :param height: Height of the dividers (z-dimension).
-    :param n_rows: Number of rows in the grid.
-    :param n_cols: Number of columns in the grid.
-    :param position: Center position [x, y] of the entire grid.
-    :return: List of divider box IDs.
-    """
-    box_ids = []
-    divider_thickness = 0.01  # 1 cm thick dividers
-    color = [0.545, 0.271, 0.075, 1.0]
-
-    # Calculate the adjusted total size of the grid
-    total_length = n_cols * length - 2 * divider_thickness
-    total_width = n_rows * width - 2 * divider_thickness
-
-    # Calculate the start position to center the grid around the specified position
-    x_start = position[0] - total_length / 2
-    y_start = position[1] - total_width / 2
-
-    # Create outer walls
-    box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
-                              position=[position[0], y_start + total_width + divider_thickness / 2, height / 2],
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
-                              position=[position[0], y_start - divider_thickness / 2, height / 2],
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
-                              position=[x_start - divider_thickness / 2, position[1], height / 2],
-                              mass=0, color=color))
-    box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
-                              position=[x_start + total_length + divider_thickness / 2, position[1], height / 2],
-                              mass=0, color=color))
-
-    # Create internal dividers
-    for i in range(1, n_rows):
-        y = y_start + i * width - divider_thickness
-        box_ids.append(create_box(half_extents=[total_length / 2, divider_thickness / 2, height / 2],
-                                  position=[position[0], y, height / 2],
-                                  mass=0, color=color))
-
-    for j in range(1, n_cols):
-        x = x_start + j * length - divider_thickness
-        box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
-                                  position=[x, position[1], height / 2],
-                                  mass=0, color=color))
-    
-    return box_ids
-
-def setup_scene(workspace_length=0.3, workspace_width=0.4, workspace_position=[0.55, 0],
-                box_length=0.25, box_width=0.15, box_height=0.2, box_n_rows=4, box_n_cols=3, box_position=[1.375, 0.0],
-                n_object=1):
-    """
-    Set up the simulation scene in PyBullet.
-    
-    :param workspace_length: Length of the workspace.
-    :param workspace_width: Width of the workspace.
-    :param workspace_position: Center position [x, y] of the workspace.
-    :param box_length: Length of each box in the grid.
-    :param box_width: Width of each box in the grid.
-    :param box_height: Height of each divider in the grid.
-    :param box_n_rows: Number of rows in the box grid.
-    :param box_n_cols: Number of columns in the box grid.
-    :param box_position: Center position of the entire grid of boxes.
-    :param n_object: Number of objects to place in the workspace.
-    :return: IDs of all elements in the simulation (plane, workspace, boxes, objects, robot).
-    """
-    p.setGravity(0, 0, -9.81)
-    plane_id = p.loadURDF("plane.urdf")
-    
-    # Set up workspace
-    workspace_ids = setup_workspace(length=workspace_length, 
-                                    width=workspace_width, 
-                                    position=workspace_position)
-    
-    # Set up boxes
-    box_ids = setup_boxes_with_dividers(length=box_length, 
-                                        width=box_width, 
-                                        height=box_height, 
-                                        n_rows=box_n_rows, 
-                                        n_cols=box_n_cols, 
-                                        position=box_position)
-    
-    # Set up objects
-    object_ids = setup_objects(workspace_length, workspace_width, workspace_position, n_object=n_object)
-    
-    # Set up robot
-    robot = UR5Robotiq85((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
-
-    return plane_id, workspace_ids, box_ids, object_ids, robot
-
-if __name__ == '__main__':
-    # Connect to physics simulation
-    physics_client_id = p.connect(p.GUI)
-    
-    # Set search path for URDFs
-    p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    
-    # Call the function to set up the scene
-    plane_id, workspace_ids, box_ids, object_ids, robot = setup_scene()
-    
-    # Main simulation loop
-    while True:
+    def step_simulation(self):
+        """
+        Advances the simulation by one time step.
+        """
         p.stepSimulation()
-        time.sleep(1./240.)
 
-    # Disconnect from the simulation when done
-    p.disconnect()
+        # Only add a time delay if the GUI is enabled to simulate real-time behavior
+        if self.use_gui:
+            time.sleep(self.timestep)
+
+    ############### Misc ###############
+    def close_simulation(self):
+        """
+        Disconnects from the PyBullet simulation.
+        """
+        if self.physics_client is not None:
+            p.disconnect(self.physics_client)
+
+# if __name__ == '__main__':
+#     # Connect to physics simulation
+#     physics_client_id = p.connect(p.GUI)
+    
+#     # Set search path for URDFs
+#     p.setAdditionalSearchPath(pybullet_data.getDataPath())
+    
+#     # Call the function to set up the scene
+#     plane_id, workspace_ids, box_ids, object_ids, robot = setup_scene()
+    
+#     # Main simulation loop
+#     while True:
+#         p.stepSimulation()
+#         time.sleep(1./240.)
+
+#     # Disconnect from the simulation when done
+#     p.disconnect()

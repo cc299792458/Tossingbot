@@ -1,0 +1,258 @@
+import time
+import random
+import pybullet as p
+import pybullet_data
+
+from tossingbot.utils.misc_utils import set_seed
+from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
+from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
+from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_capsule, create_cylinder, create_sphere
+from tossingbot.envs.pybullet.utils.camera_utils import capture_rgbd_image, depth_to_point_cloud_with_color, initialize_plots, plot_rgb_pointcloud
+
+class TossObjects(BaseScene):
+    def __init__(self, timestep=1/240, gravity=-9.81, use_gui=True, scene_config=None, robot_config=None, objects_config=None, camera_config=None):
+        """
+        Initialize the TossObjects scene.
+
+        Args:
+            timestep (float): Time step for the simulation.
+            gravity (float): Gravity applied to the scene.
+            use_gui (bool): Whether to run the simulation in GUI mode or headless mode.
+            scene_config (dict): Configuration for the scene setup (e.g., dimensions, objects).
+            robot_config (dict): Configuration for the robot setup (e.g., robot type, starting position).
+        """
+        # Default scene configuration
+        default_scene_config = {
+            "workspace_length": 0.3,
+            "workspace_width": 0.4,
+            "workspace_position": [0.55, 0],
+            "box_length": 0.25,
+            "box_width": 0.15,
+            "box_height": 0.2,
+            "box_n_rows": 4,
+            "box_n_cols": 3,
+            "box_position": [1.375, 0.0],
+            "workspace_xlim": [0.55 - 0.3 / 2, 0.55 + 0.3 / 2],
+            "workspace_ylim": [0 - 0.4 / 2, 0 + 0.4 / 2],
+            "workspace_zlim": [0.0, 0.2],
+        }
+        # Update scene configuration and save
+        if scene_config is not None:
+            default_scene_config.update(scene_config)
+        self.scene_config = default_scene_config
+
+        # Default robot configuration
+        default_robot_config = {
+            "base_position": [0.0, 0.0, 0.0], 
+            "base_orientation": [0.0, 0.0, 0.0], 
+            "robot_type": 'panda',
+            "visualize_coordinate_frames": use_gui,
+        }
+        # Update robot configuration and save
+        if robot_config is not None:
+            default_robot_config.update(robot_config)
+        self.robot_config = default_robot_config
+
+        # Default objects configuration
+        default_objects_config = {
+            "n_object": 1,
+        }
+        # Update objects configuration and save
+        if objects_config is not None:
+            default_objects_config.update(objects_config)
+        self.objects_config = default_objects_config
+
+        # Default camera configuration
+        default_camera_config = {
+            "cam_target_pos": [*self.scene_config['workspace_position'], 0.0],
+            "cam_distance": self.scene_config['workspace_length'] / 2,
+            "width": 64 * 3,  # 192x144 resolution
+            "height": 48 * 3,
+            "cam_yaw": 90,    # Can be adjusted
+            "cam_pitch": -90, # Can be adjusted
+            "cam_roll": 0,
+            "fov": 90,
+            "aspect": 1.33,
+            "near": 0.01,
+            "far": 10.0,
+        }
+        # Update camera configuration and save
+        if camera_config is not None:
+            default_camera_config.update(camera_config)
+        self.camera_config = default_camera_config
+
+        super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
+
+    def load_scene(self):
+        """
+        Load the tossing object scene in PyBullet.
+        """
+        # Load workspace
+        self.load_workspace(length=self.scene_config['workspace_length'], 
+                                                 width=self.scene_config['workspace_width'], 
+                                                 position=self.scene_config['workspace_position'])
+        
+        # Load boxes
+        self.load_boxes_with_dividers(length=self.scene_config['box_length'], 
+                                                     width=self.scene_config['box_width'], 
+                                                     height=self.scene_config['box_height'], 
+                                                     n_rows=self.scene_config['box_n_rows'], 
+                                                     n_cols=self.scene_config['box_n_cols'], 
+                                                     position=self.scene_config['box_position'])
+        
+
+    def load_workspace(self, length=0.3, width=0.4, position=[0.55, 0.0]):
+        """
+        Create a workspace with walls in the simulation.
+        
+        :param length: Length of the workspace.
+        :param width: Width of the workspace.
+        :param position: Center position [x, y] of the workspace.
+        :return: List of box IDs for the workspace.
+        """
+        thickness = 0.01
+        height = 0.1
+        color = [0.8, 0.8, 0.8, 1.0]
+        self.workspace_ids = []
+        
+        # Base of the workspace
+        self.workspace_ids.append(create_box(half_extents=[length / 2, width / 2, thickness / 2], 
+                                position=[position[0], position[1], thickness / 2], 
+                                mass=0, color=color))
+        
+        # Walls of the workspace
+        self.workspace_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
+                                position=[position[0] - length / 2, position[1], height / 2 + thickness], 
+                                mass=0, color=color))
+        self.workspace_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
+                                position=[position[0], position[1] - width / 2, height / 2 + thickness], 
+                                mass=0, color=color))
+        self.workspace_ids.append(create_box(half_extents=[thickness / 2, width / 2, height / 2], 
+                                position=[position[0] + length / 2, position[1], height / 2 + thickness], 
+                                mass=0, color=color))
+        self.workspace_ids.append(create_box(half_extents=[length / 2, thickness / 2, height / 2], 
+                                position=[position[0], position[1] + width / 2, height / 2 + thickness], 
+                                mass=0, color=color))
+
+    def load_boxes_with_dividers(self, length=0.25, width=0.15, height=0.2, n_rows=4, n_cols=3, position=[0.0, 0.0]):
+        """
+        Create a grid of hollow boxes separated by dividers using thin box walls.
+        
+        :param length: Length of each individual box (x-dimension).
+        :param width: Width of each individual box (y-dimension).
+        :param height: Height of the dividers (z-dimension).
+        :param n_rows: Number of rows in the grid.
+        :param n_cols: Number of columns in the grid.
+        :param position: Center position [x, y] of the entire grid.
+        :return: List of divider box IDs.
+        """
+        self.box_ids = []
+        divider_thickness = 0.01  # 1 cm thick dividers
+        color = [0.545, 0.271, 0.075, 1.0]
+
+        # Calculate the adjusted total size of the grid
+        total_length = n_cols * length - 2 * divider_thickness
+        total_width = n_rows * width - 2 * divider_thickness
+
+        # Calculate the start position to center the grid around the specified position
+        x_start = position[0] - total_length / 2
+        y_start = position[1] - total_width / 2
+
+        # Create outer walls
+        self.box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
+                                position=[position[0], y_start + total_width + divider_thickness / 2, height / 2],
+                                mass=0, color=color))
+        self.box_ids.append(create_box(half_extents=[total_length / 2 + divider_thickness, divider_thickness / 2, height / 2],
+                                position=[position[0], y_start - divider_thickness / 2, height / 2],
+                                mass=0, color=color))
+        self.box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
+                                position=[x_start - divider_thickness / 2, position[1], height / 2],
+                                mass=0, color=color))
+        self.box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2 + divider_thickness, height / 2],
+                                position=[x_start + total_length + divider_thickness / 2, position[1], height / 2],
+                                mass=0, color=color))
+
+        # Create internal dividers
+        for i in range(1, n_rows):
+            y = y_start + i * width - divider_thickness
+            self.box_ids.append(create_box(half_extents=[total_length / 2, divider_thickness / 2, height / 2],
+                                    position=[position[0], y, height / 2],
+                                    mass=0, color=color))
+
+        for j in range(1, n_cols):
+            x = x_start + j * length - divider_thickness
+            self.box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
+                                    position=[x, position[1], height / 2],
+                                    mass=0, color=color))
+    
+    def load_robot(self):
+        if self.robot_config['robot_type'] == 'ur5_robotiq':
+            self.robot = UR5Robotiq85(base_position=self.robot_config['base_position'], 
+                                      base_orientation=self.robot_config['base_orientation'], 
+                                      visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'])
+        elif self.robot_config['robot_type'] == 'panda':
+            self.robot = Panda(base_position=self.robot_config['base_position'], 
+                                      base_orientation=self.robot_config['base_orientation'], 
+                                      visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'])
+
+    def reset_robot(self):
+        self.robot.reset()
+    
+    def reset_objects(self):
+        """
+        Randomly place objects in the workspace.    
+        """
+        margin = 0.1
+        self.object_ids = []
+        
+        for i in range(self.objects_config['n_object']):
+            x = random.uniform(self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin, 
+                            self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin)
+            y = random.uniform(self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin, 
+                            self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin)
+            
+            # Create a sphere for now (extendable to other object types)
+            self.object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
+
+if __name__ == '__main__':
+    set_seed()
+    env = TossObjects()
+    #####----- Main Loop -----#####
+    # Initialize the plots for real-time display
+    fig, axes = initialize_plots()
+    while True:
+        env.step(action=None)
+        # Capture image
+        rgb_img, depth_img, view_matrix = capture_rgbd_image(
+            cam_target_pos=env.camera_config['cam_target_pos'], 
+            cam_distance=env.camera_config['cam_distance'], 
+            width=env.camera_config['width'], 
+            height=env.camera_config['height'],
+            cam_yaw=env.camera_config['cam_yaw'], 
+            cam_pitch=env.camera_config['cam_pitch'], 
+            cam_roll=env.camera_config['cam_roll'],
+            fov=env.camera_config['fov'], 
+            aspect=env.camera_config['aspect'], 
+            near=env.camera_config['near'], 
+            far=env.camera_config['far']
+        )
+
+        # Generate point cloud with color
+        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
+                                                              rgb_img, 
+                                                              fov=env.camera_config['fov'], 
+                                                              aspect=env.camera_config['aspect'], 
+                                                              width=env.camera_config['width'], 
+                                                              height=env.camera_config['height'], 
+                                                              view_matrix=view_matrix, 
+                                                              to_world=True)
+
+        # Plot rgbd image and pointcloud
+        plot_rgb_pointcloud(rgb_img, 
+                            point_cloud, 
+                            colors, 
+                            fig, 
+                            axes, 
+                            xlim=env.scene_config['workspace_xlim'], 
+                            ylim=env.scene_config['workspace_ylim'], 
+                            zlim=env.scene_config['workspace_zlim'])
