@@ -300,12 +300,12 @@ class BaseRobot:
         Returns:
             np.ndarray: Joint velocities to achieve the desired TCP velocity.
         """
-        joint_positions = self.get_arm_joint_position()
+        joint_positions = self.get_joint_position()
         zero_vec = [0.0] * len(joint_positions)
         jacobian_linear, jacobian_angular = p.calculateJacobian(
             bodyUniqueId=self.robot_id,
             linkIndex=self.tcp_id,
-            localPosition=[0, 0, 0],  # TCP origin in local coordinates
+            localPosition=(0, 0, 0),  # TCP origin in local coordinates
             objPositions=joint_positions,
             objVelocities=zero_vec,
             objAccelerations=zero_vec
@@ -316,6 +316,15 @@ class BaseRobot:
         joint_velocities = np.linalg.pinv(jacobian).dot(desired_velocity)  # Compute joint velocities using Jacobian
 
         return joint_velocities
+    
+    def get_joint_position(self):
+        """
+        Get the current position of all the joints.
+        
+        Returns:
+            list: Current positions of controllable joints.
+        """
+        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.controllable_joints]
 
     ############### gripper ###############
     def set_gripper_position(self):
@@ -479,8 +488,8 @@ class BaseRobot:
         # Stage 2: Release the object by opening the gripper while maintaining the velocity
         elif self._throw_step == 1:
             # Apply velocity control using the velocity IK method
-            joint_velocities = self.velocity_ik(self.tcp_target_velocity[:3], self.tcp_target_velocity[3:])
-            self.set_arm_joint_velocity_target(joint_velocities)
+            joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+            self.set_arm_joint_velocity_target(joint_velocities[:self.num_arm_dofs])
 
             # Open the gripper to release the object
             self.open_gripper()
@@ -491,7 +500,7 @@ class BaseRobot:
                 release_pose = self.get_tcp_pose()
 
                 # Calculate the deceleration pose based on the current release point and velocity
-                normalized_velocity = np.array(self.tcp_target_velocity[:3]) / np.linalg.norm(self.tcp_target_velocity[:3])  # Normalize linear velocity
+                normalized_velocity = np.array(self.tcp_target_velocity[0]) / np.linalg.norm(self.tcp_target_velocity[0])  # Normalize linear velocity
                 deceleration_position = np.array(release_pose[0]) + deceleration_distance * normalized_velocity
                 self.tcp_deceleration_pose = (deceleration_position.tolist(), release_pose[1])  # Keep the orientation same as release
 

@@ -166,8 +166,8 @@ if __name__ == '__main__':
     object_id = create_sphere(radius=0.02, position=position, mass=0.2)
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
     grasp_pose = (position, [1.0, 0.0, 0.0, 0.0])
-    throw_pose = ([0.5, 0.0, 0.3], [1.0, 0.0, 0.0, 0.0])
-    throw_vel = ([0.1, 0.0, 0.0], [0.0, 0.0, 0.0])
+    throw_pose = ([0.3, 0.2, 0.3], [1.0, 0.0, 0.0, 0.0])
+    throw_vel = ([0.0, 0.1, 0.0], [0.0, 0.0, 0.0])
     grasp_completed = False
     throw_completed = False
 
