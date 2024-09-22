@@ -142,17 +142,25 @@ class BaseRobot:
         for joint_id, pos in zip(self.arm_controllable_joints, position):
             p.resetJointState(self.robot_id, joint_id, pos)
 
-    def set_arm_joint_position_target(self, target_position):
+    def set_arm_joint_position_target(self, target_position, target_velocity=None):
         """
         Set the target position for the arm joints.
         """
         assert len(target_position) == self.num_arm_dofs, "Target position length mismatch"
-        for joint_id, pos in zip(self.arm_controllable_joints, target_position):
+        if target_velocity is not None:
+            assert len(target_velocity) == self.num_arm_dofs, "Target velocity length mismatch"
+        else:
+            target_velocity = np.zeros([len(target_position)])
+        for joint_id, pos, vel in zip(self.arm_controllable_joints, target_position, target_velocity):
             p.setJointMotorControl2(
-                self.robot_id, joint_id, p.POSITION_CONTROL, pos,
-                force=self.joints[joint_id].max_force,
-                maxVelocity=self.joints[joint_id].max_velocity,
-            )
+            self.robot_id, 
+            joint_id, 
+            p.POSITION_CONTROL, 
+            targetPosition=pos,
+            targetVelocity=vel,
+            force=self.joints[joint_id].max_force,
+            maxVelocity=self.joints[joint_id].max_velocity
+        )
 
     def set_arm_joint_velocity_target(self, target_velocity):
         """
@@ -200,7 +208,7 @@ class BaseRobot:
         joint_position = self.pose_ik(pose=tcp_pose)
         self.set_arm_joint_position(position=joint_position)
 
-    def set_tcp_pose_target(self, target_tcp_pose):
+    def set_tcp_pose_target(self, target_tcp_pose, target_tcp_velocity=None):
         """
         Set the target TCP pose.
         
@@ -210,7 +218,11 @@ class BaseRobot:
                                     - orientation: [qx, qy, qz, qw]
         """
         target_joint_position = self.pose_ik(pose=target_tcp_pose)
-        self.set_arm_joint_position_target(target_position=target_joint_position)
+        target_joint_velocity = self.velocity_ik(
+            linear_velocity=target_tcp_velocity[0],
+            angular_velocity=target_tcp_velocity[0]
+        ) if target_tcp_velocity is not None else np.zeros([len(target_joint_position)])
+        self.set_arm_joint_position_target(target_position=target_joint_position, target_velocity=target_joint_velocity)
 
     def set_tcp_velocity_target(self, target_tcp_velocity):
         """
@@ -220,8 +232,8 @@ class BaseRobot:
             target_tcp_velocity (list): Desired velocity in Cartesian space [linear, angular].
         """
         target_joint_velocity = self.velocity_ik(
-            linear_velocity=target_tcp_velocity[:3],
-            angular_velocity=target_tcp_velocity[3:]
+            linear_velocity=target_tcp_velocity[0],
+            angular_velocity=target_tcp_velocity[1]
         )
         self.set_arm_joint_velocity_target(target_joint_velocity)
 
@@ -315,7 +327,7 @@ class BaseRobot:
         desired_velocity = np.hstack((linear_velocity, angular_velocity))  # Desired velocity vector
         joint_velocities = np.linalg.pinv(jacobian).dot(desired_velocity)  # Compute joint velocities using Jacobian
 
-        return joint_velocities
+        return joint_velocities[:self.num_arm_dofs]
     
     def get_joint_position(self):
         """
@@ -383,8 +395,8 @@ class BaseRobot:
         if self._grasp_step == 0:
             # Move through the trajectory to the position above the target
             if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
+                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached, move to the next step (Step 2)
@@ -405,8 +417,8 @@ class BaseRobot:
         elif self._grasp_step == 2:
             # Move through the trajectory to the target position
             if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
+                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached the target, move to the next step (Step 4)
@@ -427,8 +439,8 @@ class BaseRobot:
         elif self._grasp_step == 4:
             # Move through the trajectory to the post-grasp position
             if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the current setpoint for the TCP
+                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
                 self._trajectory_index += 1
             else:
                 # Once reached, the grasping process is complete
@@ -439,7 +451,7 @@ class BaseRobot:
 
         return False  # Grasping process not yet complete
     
-    def throw(self, tcp_target_pose, tcp_target_velocity, deceleration_distance=0.2, estimate_speed=0.5):
+    def throw(self, tcp_target_pose, tcp_target_velocity, estimate_speed=0.5):
         """
         Perform a throwing action with three stages: 
         1. Move to the release point with a target velocity.
@@ -450,9 +462,8 @@ class BaseRobot:
             tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
             tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
             deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
-            deceleration_time (float): Time duration for the deceleration phase.
             estimate_speed (float): Speed used to estimate the time for trajectory generation.
-        
+
         Returns:
             bool: True if the throwing process is completed, False otherwise.
         """
@@ -477,8 +488,8 @@ class BaseRobot:
         if self._throw_step == 0:
             if self._trajectory_index < len(self._tcp_trajectory):
                 # Move step by step along the trajectory towards the release point
-                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the TCP to the current subtarget
+                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the TCP to the current subtarget
                 self._trajectory_index += 1
             else:
                 # Once the release point is reached, switch to velocity control for release
@@ -489,48 +500,37 @@ class BaseRobot:
         elif self._throw_step == 1:
             # Apply velocity control using the velocity IK method
             joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
-            self.set_arm_joint_velocity_target(joint_velocities[:self.num_arm_dofs])
+            self.set_arm_joint_velocity_target(joint_velocities)
 
             # Open the gripper to release the object
             self.open_gripper()
             if self._is_gripper_stopped():  # Check if the gripper has fully opened
                 self._throw_step = 2  # Move to the next step (deceleration phase)
-                
-                # Update the TCP release pose based on the current state
-                release_pose = self.get_tcp_pose()
+                return False  # Throwing not yet complete
 
-                # Calculate the deceleration pose based on the current release point and velocity
-                normalized_velocity = np.array(self.tcp_target_velocity[0]) / np.linalg.norm(self.tcp_target_velocity[0])  # Normalize linear velocity
-                deceleration_position = np.array(release_pose[0]) + deceleration_distance * normalized_velocity
-                self.tcp_deceleration_pose = (deceleration_position.tolist(), release_pose[1])  # Keep the orientation same as release
-
-                # Generate trajectory for decelerating the arm (switch back to position control)
-                self._tcp_trajectory = self._generate_tcp_trajectory(
-                    release_pose,                 # Start deceleration from the actual release pose
-                    self.tcp_deceleration_pose,   # End at the calculated deceleration pose
-                    start_tcp_vel=self.tcp_target_velocity,  # Start with the velocity at release
-                    target_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # End at zero velocity (full stop)
-                    estimate_speed=estimate_speed  # Use estimated speed to calculate the deceleration trajectory
-                )
-                self._trajectory_index = 0  # Initialize trajectory index for the deceleration phase
-            return False  # Throwing not yet complete
-
-        # Stage 3: Decelerate the arm after the release
+        # Stage 3: Decelerate the arm by gradually reducing velocity to zero
         elif self._throw_step == 2:
-            # Switch back to position control for the deceleration trajectory
-            if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose)  # Set the TCP to the current subtarget
-                self._trajectory_index += 1
-            else:
-                # Once deceleration is complete, the throwing process is done
+            # Apply a gradual deceleration to the arm by reducing the joint velocities
+            joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+
+            # Gradually reduce each joint velocity
+            deceleration_factor = 0.9  # Factor to gradually reduce velocity each step
+            joint_velocities = [vel * deceleration_factor for vel in joint_velocities]
+
+            # Apply the reduced velocities to the arm joints
+            self.set_arm_joint_velocity_target(joint_velocities)
+
+            # Check if all joint velocities are close to zero
+            if all(abs(vel) < 0.01 for vel in joint_velocities):
+                self.set_arm_joint_velocity_target(np.zeros_like(joint_velocities))
                 del self._throw_step  # Cleanup after completion
-                del self._tcp_trajectory
-                del self._trajectory_index
                 return True  # Throwing process is complete
 
-        return False  # Throwing process is not complete
+            # Update the current velocity for the next iteration
+            self.tcp_target_velocity = ([v * deceleration_factor for v in self.tcp_target_velocity[0]],
+                                        [v * deceleration_factor for v in self.tcp_target_velocity[1]])
 
+        return False  # Throwing process is not complete
     
     def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel=None, target_tcp_vel=None, estimate_speed=0.5):
         """
@@ -545,7 +545,7 @@ class BaseRobot:
             estimate_speed (float): Speed used to estimate the duration of the trajectory.
         
         Returns:
-            list: List of subtargets (setpoints) for the TCP to follow, each containing position and orientation.
+            list: List of subtargets (setpoints) for the TCP to follow, each containing position, orientation, linear velocity, and angular velocity.
         """
         # Extract start and target positions and orientations
         start_pos = np.array(start_tcp_pose[0])
@@ -568,22 +568,50 @@ class BaseRobot:
         # Compute the number of steps based on PyBullet's simulation step size (1/240 seconds)
         num_steps = int(time_estimate / (1/240))
         
-        # Generate quintic polynomial trajectory for linear positions
-        pos_trajectory = self._generate_quintic_trajectory(start_s=start_pos, 
-                                                           end_s=target_pos, 
-                                                           start_v=start_trans_vel, 
-                                                           end_v=target_trans_vel, 
-                                                           duration=time_estimate, 
-                                                           num_steps=num_steps)
+        # Generate quintic polynomial trajectory for linear positions and velocities
+        pos_trajectory, vel_trajectory = self._generate_quintic_trajectory(
+            start_s=start_pos, 
+            end_s=target_pos, 
+            start_v=start_trans_vel, 
+            end_v=target_trans_vel, 
+            duration=time_estimate, 
+            num_steps=num_steps)
 
         # Generate quaternion trajectory using slerp
         t_values = np.linspace(0, 1, num_steps)  # Interpolation points for Slerp
         ori_trajectory = slerp(start_quat, target_quat, t_values)
-        
-        # Generate the final list of subtargets (setpoints) combining positions and orientations
+
+        # Compute rotational velocities using quaternion time derivative
+        rot_vel_trajectory = []
+        delta_t = time_estimate / num_steps
+        for i in range(1, num_steps):
+            q0 = R.from_quat(ori_trajectory[i-1])
+            q1 = R.from_quat(ori_trajectory[i])
+            
+            # Compute the relative rotation between two quaternions
+            q_diff = q1 * q0.inv()
+            
+            # Convert quaternion difference to angle-axis (axis * angle), then normalize to get angular velocity
+            angle = np.arccos(np.clip(q_diff.as_quat()[-1], -1.0, 1.0)) * 2  # Extract angle (w component in quaternion)
+            axis = q_diff.as_rotvec()  # Get axis of rotation
+            
+            # Compute angular velocity in rad/s
+            angular_velocity = axis * (angle / delta_t)
+            rot_vel_trajectory.append(angular_velocity)
+
+        # Ensure initial rotational velocity is included
+        rot_vel_trajectory.insert(0, start_rot_vel)
+
+        # Generate the final list of subtargets (setpoints) combining positions, orientations, and velocities
         subtargets = []
         for i in range(num_steps):
-            subtarget = (pos_trajectory[i].tolist(), ori_trajectory[i].tolist())
+            # Each subtarget is a list combining position, orientation (quaternion), linear velocity, and rotational velocity
+            subtarget = [
+                (pos_trajectory[i].tolist(),    # Position
+                ori_trajectory[i].tolist()),    # Orientation (quaternion)
+                (vel_trajectory[i].tolist(),    # Linear velocity
+                rot_vel_trajectory[i].tolist()) # Angular velocity
+            ]
             subtargets.append(subtarget)
         
         return subtargets
@@ -603,7 +631,9 @@ class BaseRobot:
             num_steps (int): Number of points to sample along the trajectory.
             
         Returns:
-            np.ndarray: Array of positions sampled along the quintic polynomial trajectory.
+            tuple: 
+                np.ndarray: Array of positions sampled along the quintic polynomial trajectory.
+                np.ndarray: Array of velocities sampled along the quintic polynomial trajectory.
         """
         # Convert inputs to numpy arrays
         start_s = np.array(start_s)
@@ -617,6 +647,7 @@ class BaseRobot:
 
         # Initialize the trajectory for each dimension
         trajectory_s = np.zeros((num_steps, len(start_s)))
+        trajectory_v = np.zeros((num_steps, len(start_s)))
         
         # Compute the quintic polynomial for each dimension independently
         for dim in range(len(start_s)):
@@ -633,8 +664,10 @@ class BaseRobot:
             t_s = np.linspace(0, duration, num_steps)
             # Evaluate the quintic polynomial at each time step for this dimension
             trajectory_s[:, dim] = A * t_s**5 + B * t_s**4 + C * t_s**3 + D * t_s**2 + E * t_s + F
+            # Velocity is the derivative of the position polynomial
+            trajectory_v[:, dim] = 5 * A * t_s**4 + 4 * B * t_s**3 + 3 * C * t_s**2 + 2 * D * t_s + E
 
-        return trajectory_s
+        return trajectory_s, trajectory_v
 
     ############### visualization ###############
     def visualize_coordinate_frames(self, axis_length=0.1, links_to_visualize=None):
@@ -721,3 +754,4 @@ class BaseRobot:
         # Visualize the actual TCP trajectory
         p.addUserDebugLine(self._prev_tcp_pose[0], current_pose[0], color_actual, line_duration)
         self._prev_tcp_pose = current_pose
+    
