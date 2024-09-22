@@ -450,87 +450,155 @@ class BaseRobot:
                 return True  # Grasping process is complete
 
         return False  # Grasping process not yet complete
-    
-    def throw(self, tcp_target_pose, tcp_target_velocity, estimate_speed=0.5):
+
+    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=0.1):
         """
         Perform a throwing action with three stages: 
-        1. Move to the release point with a target velocity.
+        1. Move to the release point with a target velocity while correcting deviations.
         2. Release the object by opening the gripper while maintaining the current velocity.
-        3. Decelerate the arm after the release.
+        3. Decelerate the arm after the release to zero velocity.
 
         Args:
             tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
             tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
-            deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
-            estimate_speed (float): Speed used to estimate the time for trajectory generation.
-
+            correction_gain (float): Gain for correcting the deviation from the target pose.
+            
         Returns:
             bool: True if the throwing process is completed, False otherwise.
         """
         # Initialize or continue the throwing process
         if not hasattr(self, '_throw_step'):
             # Stage 0: Set initial conditions for the throwing process
-            self._throw_step = 0  # Initialize the throw step
+            self._throw_step = 0
             self.tcp_target_pose = tcp_target_pose
             self.tcp_target_velocity = tcp_target_velocity
 
-            # Stage 1: Generate the trajectory towards the release point (target pose with velocity)
-            self._tcp_trajectory = self._generate_tcp_trajectory(
-                self.get_tcp_pose(),            # Start at the current TCP pose
-                self.tcp_target_pose,           # Move to the target pose
-                start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # Starting velocity is zero (from rest)
-                target_tcp_vel=tcp_target_velocity,  # End with the specified target velocity
-                estimate_speed=estimate_speed   # Use estimated speed for trajectory timing
-            )
-            self._trajectory_index = 0  # Initialize the trajectory index
-
-        # Stage 1: Move to the release point with the target velocity
+        # Stage 1: Move to the release point with velocity, correcting deviations
         if self._throw_step == 0:
-            if self._trajectory_index < len(self._tcp_trajectory):
-                # Move step by step along the trajectory towards the release point
-                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the TCP to the current subtarget
-                self._trajectory_index += 1
-            else:
-                # Once the release point is reached, switch to velocity control for release
+            current_pose = self.get_tcp_pose()  # Get the current TCP pose
+            position_error = np.array(self.tcp_target_pose[0]) - np.array(current_pose[0])  # Position error
+
+            # Compute orientation error using quaternion difference
+            current_orientation = R.from_quat(current_pose[1])
+            target_orientation = R.from_quat(self.tcp_target_pose[1])
+            orientation_error_axis_angle = (target_orientation * current_orientation.inv()).as_rotvec()
+
+            # Apply corrections to linear and angular velocities
+            corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + correction_gain * position_error
+            corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + correction_gain * orientation_error_axis_angle
+
+            # Use velocity IK to set joint velocities
+            joint_velocities = self.velocity_ik(corrected_linear_velocity, corrected_angular_velocity)
+            self.set_arm_joint_velocity_target(joint_velocities)
+
+            # Check if position error is small enough to move to the next stage
+            if np.linalg.norm(position_error) < 0.01:
                 self._throw_step = 1
+                self._open_threshold = max(self.get_gripper_position()) + 0.005
                 return False  # Throwing not yet complete
 
-        # Stage 2: Release the object by opening the gripper while maintaining the velocity
+        # Stage 2: Release the object by opening the gripper
         elif self._throw_step == 1:
-            # Apply velocity control using the velocity IK method
             joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
             self.set_arm_joint_velocity_target(joint_velocities)
 
-            # Open the gripper to release the object
             self.open_gripper()
-            if self._is_gripper_stopped():  # Check if the gripper has fully opened
-                self._throw_step = 2  # Move to the next step (deceleration phase)
+            if self._is_gripper_open(self._open_threshold):
+                self._throw_step = 2
                 return False  # Throwing not yet complete
 
-        # Stage 3: Decelerate the arm by gradually reducing velocity to zero
+        # Stage 3: Decelerate the arm by reducing velocity to zero
         elif self._throw_step == 2:
-            # Apply a gradual deceleration to the arm by reducing the joint velocities
+            self.set_arm_joint_velocity_target(np.zeros([self.num_arm_dofs]))
             joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
-
-            # Gradually reduce each joint velocity
-            deceleration_factor = 0.9  # Factor to gradually reduce velocity each step
-            joint_velocities = [vel * deceleration_factor for vel in joint_velocities]
-
-            # Apply the reduced velocities to the arm joints
-            self.set_arm_joint_velocity_target(joint_velocities)
-
-            # Check if all joint velocities are close to zero
             if all(abs(vel) < 0.01 for vel in joint_velocities):
-                self.set_arm_joint_velocity_target(np.zeros_like(joint_velocities))
-                del self._throw_step  # Cleanup after completion
-                return True  # Throwing process is complete
+                del self._throw_step
+                del self._open_threshold
+                return True  # Throwing process complete
 
-            # Update the current velocity for the next iteration
-            self.tcp_target_velocity = ([v * deceleration_factor for v in self.tcp_target_velocity[0]],
-                                        [v * deceleration_factor for v in self.tcp_target_velocity[1]])
+        return False  # Throwing process not yet complete
 
-        return False  # Throwing process is not complete
+
+    # def throw(self, tcp_target_pose, tcp_target_velocity, estimate_speed=0.5):
+    #     """
+    #     Perform a throwing action with three stages: 
+    #     1. Move to the release point with a target velocity.
+    #     2. Release the object by opening the gripper while maintaining the current velocity.
+    #     3. Decelerate the arm after the release.
+
+    #     Args:
+    #         tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
+    #         tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
+    #         deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
+    #         estimate_speed (float): Speed used to estimate the time for trajectory generation.
+
+    #     Returns:
+    #         bool: True if the throwing process is completed, False otherwise.
+    #     """
+    #     # Initialize or continue the throwing process
+    #     if not hasattr(self, '_throw_step'):
+    #         # Stage 0: Set initial conditions for the throwing process
+    #         self._throw_step = 0  # Initialize the throw step
+    #         self.tcp_target_pose = tcp_target_pose
+    #         self.tcp_target_velocity = tcp_target_velocity
+
+    #         # Stage 1: Generate the trajectory towards the release point (target pose with velocity)
+    #         self._tcp_trajectory = self._generate_tcp_trajectory(
+    #             self.get_tcp_pose(),            # Start at the current TCP pose
+    #             self.tcp_target_pose,           # Move to the target pose
+    #             start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # Starting velocity is zero (from rest)
+    #             target_tcp_vel=tcp_target_velocity,  # End with the specified target velocity
+    #             estimate_speed=estimate_speed   # Use estimated speed for trajectory timing
+    #         )
+    #         self._trajectory_index = 0  # Initialize the trajectory index
+
+    #     # Stage 1: Move to the release point with the target velocity
+    #     if self._throw_step == 0:
+    #         if self._trajectory_index < len(self._tcp_trajectory):
+    #             # Move step by step along the trajectory towards the release point
+    #             self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+    #             self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the TCP to the current subtarget
+    #             self._trajectory_index += 1
+    #         else:
+    #             # Once the release point is reached, switch to velocity control for release
+    #             self._throw_step = 1
+    #             return False  # Throwing not yet complete
+
+    #     # Stage 2: Release the object by opening the gripper while maintaining the velocity
+    #     elif self._throw_step == 1:
+    #         # Apply velocity control using the velocity IK method
+    #         joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+    #         self.set_arm_joint_velocity_target(joint_velocities)
+
+    #         # Open the gripper to release the object
+    #         self.open_gripper()
+    #         if self._is_gripper_stopped():  # Check if the gripper has fully opened
+    #             self._throw_step = 2  # Move to the next step (deceleration phase)
+    #             return False  # Throwing not yet complete
+
+    #     # Stage 3: Decelerate the arm by gradually reducing velocity to zero
+    #     elif self._throw_step == 2:
+    #         # Apply a gradual deceleration to the arm by reducing the joint velocities
+    #         joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+
+    #         # Gradually reduce each joint velocity
+    #         deceleration_factor = 0.9  # Factor to gradually reduce velocity each step
+    #         joint_velocities = [vel * deceleration_factor for vel in joint_velocities]
+
+    #         # Apply the reduced velocities to the arm joints
+    #         self.set_arm_joint_velocity_target(joint_velocities)
+
+    #         # Check if all joint velocities are close to zero
+    #         if all(abs(vel) < 0.01 for vel in joint_velocities):
+    #             self.set_arm_joint_velocity_target(np.zeros_like(joint_velocities))
+    #             del self._throw_step  # Cleanup after completion
+    #             return True  # Throwing process is complete
+
+    #         # Update the current velocity for the next iteration
+    #         self.tcp_target_velocity = ([v * deceleration_factor for v in self.tcp_target_velocity[0]],
+    #                                     [v * deceleration_factor for v in self.tcp_target_velocity[1]])
+
+    #     return False  # Throwing process is not complete
     
     def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel=None, target_tcp_vel=None, estimate_speed=0.5):
         """

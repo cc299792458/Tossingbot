@@ -88,17 +88,22 @@ class Panda(BaseRobot):
         """
         self.set_gripper_position_target([self.gripper_range[0], self.gripper_range[0]])
 
-    def _is_gripper_open(self, tolerance=2e-3):
+    def _is_gripper_open(self, tolerance=2e-3, open_threshold=None):
         """
-        Check if the gripper is fully open.
+        Check if the gripper is open enough based on a specified threshold.
         
         Args:
-            tolerance (float): The tolerance value for checking if the gripper is open.
-            
+            tolerance (float): The tolerance value for checking if the gripper is fully open.
+            open_threshold (float, optional): If provided, checks if the gripper has opened by at least 
+                                            this threshold value. If None, checks if the gripper is fully open.
+                                            
         Returns:
-            bool: True if the gripper is open, False otherwise.
+            bool: True if the gripper is open based on the condition, False otherwise.
         """
-        position_condition = max(self.gripper_range[1] - self.get_gripper_position()[0], self.gripper_range[1] - self.get_gripper_position()[1]) < tolerance
+        gripper_positions = self.get_gripper_position()  # Get current gripper positions
+        open_threshold = min(open_threshold, self.gripper_range[1]) if open_threshold is not None else self.gripper_range[1]
+        position_condition = max(open_threshold - gripper_positions[0], open_threshold - gripper_positions[1]) < tolerance
+        
         return position_condition
 
     def _is_gripper_closed(self, tolerance=2e-3):
@@ -167,7 +172,7 @@ if __name__ == '__main__':
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
     grasp_pose = (position, [1.0, 0.0, 0.0, 0.0])
     throw_pose = ([0.4, 0.0, 0.3], [1.0, 0.0, 0.0, 0.0])
-    throw_vel = ([0.2, 0.0, 0.0], [0.0, 0.0, 0.0])
+    throw_vel = ([2.0, 0.0, 0.0], [0.0, 0.0, 0.0])
     grasp_completed = False
     throw_completed = False
 
