@@ -20,6 +20,8 @@ class TossObjects(BaseScene):
             use_gui (bool): Whether to run the simulation in GUI mode or headless mode.
             scene_config (dict): Configuration for the scene setup (e.g., dimensions, objects).
             robot_config (dict): Configuration for the robot setup (e.g., robot type, starting position).
+            objects_config (dict): Configuration for the objects in the scene.
+            camera_config (dict): Configuration for the camera setup.
         """
         # Default scene configuration
         default_scene_config = {
@@ -36,19 +38,17 @@ class TossObjects(BaseScene):
             "workspace_ylim": [0 - 0.4 / 2, 0 + 0.4 / 2],
             "workspace_zlim": [0.0, 0.2],
         }
-        # Update scene configuration and save
         if scene_config is not None:
             default_scene_config.update(scene_config)
         self.scene_config = default_scene_config
 
         # Default robot configuration
         default_robot_config = {
-            "base_position": [0.0, 0.0, 0.0], 
-            "base_orientation": [0.0, 0.0, 0.0], 
+            "base_position": [0.0, 0.0, 0.0],
+            "base_orientation": [0.0, 0.0, 0.0],
             "robot_type": 'panda',
             "visualize_coordinate_frames": use_gui,
         }
-        # Update robot configuration and save
         if robot_config is not None:
             default_robot_config.update(robot_config)
         self.robot_config = default_robot_config
@@ -57,7 +57,6 @@ class TossObjects(BaseScene):
         default_objects_config = {
             "n_object": 1,
         }
-        # Update objects configuration and save
         if objects_config is not None:
             default_objects_config.update(objects_config)
         self.objects_config = default_objects_config
@@ -68,15 +67,14 @@ class TossObjects(BaseScene):
             "cam_distance": self.scene_config['workspace_length'] / 2,
             "width": 64 * 3,  # 192x144 resolution
             "height": 48 * 3,
-            "cam_yaw": 90,    # Can be adjusted
-            "cam_pitch": -90, # Can be adjusted
+            "cam_yaw": 90,  # Can be adjusted
+            "cam_pitch": -90,  # Can be adjusted
             "cam_roll": 0,
             "fov": 90,
             "aspect": 1.33,
             "near": 0.01,
             "far": 10.0,
         }
-        # Update camera configuration and save
         if camera_config is not None:
             default_camera_config.update(camera_config)
         self.camera_config = default_camera_config
@@ -87,28 +85,29 @@ class TossObjects(BaseScene):
         """
         Load the tossing object scene in PyBullet.
         """
-        # Load workspace
-        self.load_workspace(length=self.scene_config['workspace_length'], 
-                                                 width=self.scene_config['workspace_width'], 
-                                                 position=self.scene_config['workspace_position'])
-        
-        # Load boxes
-        self.load_boxes_with_dividers(length=self.scene_config['box_length'], 
-                                                     width=self.scene_config['box_width'], 
-                                                     height=self.scene_config['box_height'], 
-                                                     n_rows=self.scene_config['box_n_rows'], 
-                                                     n_cols=self.scene_config['box_n_cols'], 
-                                                     position=self.scene_config['box_position'])
-        
+        # Load workspace and boxes
+        self.load_workspace(
+            length=self.scene_config['workspace_length'],
+            width=self.scene_config['workspace_width'],
+            position=self.scene_config['workspace_position'],
+        )
+        self.load_boxes_with_dividers(
+            length=self.scene_config['box_length'],
+            width=self.scene_config['box_width'],
+            height=self.scene_config['box_height'],
+            n_rows=self.scene_config['box_n_rows'],
+            n_cols=self.scene_config['box_n_cols'],
+            position=self.scene_config['box_position'],
+        )
 
     def load_workspace(self, length=0.3, width=0.4, position=[0.55, 0.0]):
         """
         Create a workspace with walls in the simulation.
-        
-        :param length: Length of the workspace.
-        :param width: Width of the workspace.
-        :param position: Center position [x, y] of the workspace.
-        :return: List of box IDs for the workspace.
+
+        Args:
+            length (float): Length of the workspace.
+            width (float): Width of the workspace.
+            position (list): Center position [x, y] of the workspace.
         """
         thickness = 0.01
         height = 0.1
@@ -137,14 +136,14 @@ class TossObjects(BaseScene):
     def load_boxes_with_dividers(self, length=0.25, width=0.15, height=0.2, n_rows=4, n_cols=3, position=[0.0, 0.0]):
         """
         Create a grid of hollow boxes separated by dividers using thin box walls.
-        
-        :param length: Length of each individual box (x-dimension).
-        :param width: Width of each individual box (y-dimension).
-        :param height: Height of the dividers (z-dimension).
-        :param n_rows: Number of rows in the grid.
-        :param n_cols: Number of columns in the grid.
-        :param position: Center position [x, y] of the entire grid.
-        :return: List of divider box IDs.
+
+        Args:
+            length (float): Length of each individual box (x-dimension).
+            width (float): Width of each individual box (y-dimension).
+            height (float): Height of the dividers (z-dimension).
+            n_rows (int): Number of rows in the grid.
+            n_cols (int): Number of columns in the grid.
+            position (list): Center position [x, y] of the entire grid.
         """
         self.box_ids = []
         divider_thickness = 0.01  # 1 cm thick dividers
@@ -184,35 +183,50 @@ class TossObjects(BaseScene):
             self.box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
                                     position=[x, position[1], height / 2],
                                     mass=0, color=color))
-    
+
     def load_robot(self):
+        """
+        Load the robot based on the robot configuration.
+        """
         if self.robot_config['robot_type'] == 'ur5_robotiq':
-            self.robot = UR5Robotiq85(base_position=self.robot_config['base_position'], 
-                                      base_orientation=self.robot_config['base_orientation'], 
-                                      visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'])
+            self.robot = UR5Robotiq85(
+                base_position=self.robot_config['base_position'],
+                base_orientation=self.robot_config['base_orientation'],
+                visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
+            )
         elif self.robot_config['robot_type'] == 'panda':
-            self.robot = Panda(base_position=self.robot_config['base_position'], 
-                                      base_orientation=self.robot_config['base_orientation'], 
-                                      visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'])
+            self.robot = Panda(
+                base_position=self.robot_config['base_position'],
+                base_orientation=self.robot_config['base_orientation'],
+                visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
+            )
 
     def reset_robot(self):
+        """
+        Reset the robot's position.
+        """
         self.robot.reset()
-    
+
     def reset_objects(self):
         """
-        Randomly place objects in the workspace.    
+        Randomly place objects in the workspace.
         """
         margin = 0.1
         self.object_ids = []
-        
+
         for i in range(self.objects_config['n_object']):
-            x = random.uniform(self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin, 
-                            self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin)
-            y = random.uniform(self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin, 
-                            self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin)
-            
+            x = random.uniform(
+                self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin,
+                self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin,
+            )
+            y = random.uniform(
+                self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin,
+                self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
+            )
+
             # Create a sphere for now (extendable to other object types)
             self.object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
+
 
 if __name__ == '__main__':
     set_seed()
