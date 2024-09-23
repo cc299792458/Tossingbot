@@ -234,83 +234,70 @@ def extract_camera_orientation_from_view_matrix(view_matrix):
     rotation_matrix_T = view_mat[:3, :3].T
     return rotation_matrix_to_quaternion(rotation_matrix_T)
 
-import numpy as np
-
-def compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, target_height):
+def compute_camera_fov_at_height(view_matrix, fov, aspect, target_height):
     """
-    Calculate the x and y limits (horizontal field of view) at a given height based on camera parameters.
+    Calculate the x and y limits (field of view) at a given height based on camera parameters.
 
     Args:
-        cam_target_pos (list): The target position the camera is looking at [x, y, z].
-        cam_distance (float): Distance from the camera to the target position.
-        cam_yaw (float): Yaw angle of the camera in degrees.
-        cam_pitch (float): Pitch angle of the camera in degrees.
-        cam_roll (float): Roll angle of the camera in degrees (not used here).
-        fov (float): Field of view in degrees (vertical FOV).
+        view_matrix (list or np.array): The view matrix of the camera.
+        fov (float): Vertical field of view in degrees.
         aspect (float): Aspect ratio (width / height).
         target_height (float): The height (z) at which to calculate the field of view.
 
     Returns:
-        tuple: (xlim, ylim) representing the horizontal field of view at the given height.
+        tuple: (xlim, ylim) representing the field of view at the given height in world coordinates.
     """
-    # Convert angles to radians
-    yaw_rad = np.radians(cam_yaw)
-    pitch_rad = np.radians(cam_pitch)
-    fov_rad = np.radians(fov)
+    # Extract camera position and orientation
+    camera_pos = np.array(extract_camera_position_from_view_matrix(view_matrix))
+    camera_orientation = extract_camera_orientation_from_view_matrix(view_matrix)
 
-    # Compute camera direction vector
-    dx = np.cos(pitch_rad) * np.sin(yaw_rad)
-    dy = np.cos(pitch_rad) * np.cos(yaw_rad)
-    dz = np.sin(pitch_rad)
-    direction = np.array([dx, dy, dz])
-    direction /= np.linalg.norm(direction)
+    # Convert quaternion to rotation matrix
+    rot_matrix = np.array(p.getMatrixFromQuaternion(camera_orientation)).reshape(3, 3)
 
-    # Compute camera position
-    cam_target_pos = np.array(cam_target_pos)
-    camera_pos = cam_target_pos - cam_distance * direction
+    # Compute the vertical and horizontal field of view in radians
+    fov_y = np.radians(fov)
+    fov_x = 2 * np.arctan(np.tan(fov_y / 2) * aspect)
 
-    # Handle special case when camera is pointing straight up or down
-    if np.isclose(np.abs(direction[2]), 1.0):
-        # Direction is along z-axis
-        right_vector = np.array([1, 0, 0])
-        up_vector = np.array([0, 1, 0]) if direction[2] < 0 else np.array([0, -1, 0])
-    else:
-        # Compute right and up vectors
-        up_vector = np.array([0, 0, 1])
-        right_vector = np.cross(direction, up_vector)
-        right_vector /= np.linalg.norm(right_vector)
-        up_vector = np.cross(right_vector, direction)
-        up_vector /= np.linalg.norm(up_vector)
+    # Define image plane corners in normalized device coordinates (NDC)
+    ndc_corners = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # (x_ndc, y_ndc)
 
-    # Compute distance along direction vector to target_height
-    if np.isclose(direction[2], 0):
-        raise ValueError("Camera direction is parallel to the target plane.")
+    # Compute the directions of the corner rays in camera space
+    dirs_camera = []
+    for x_ndc, y_ndc in ndc_corners:
+        x = x_ndc * np.tan(fov_x / 2)
+        y = y_ndc * np.tan(fov_y / 2)
+        z = -1  # Camera looks along negative Z-axis
+        dir_camera = np.array([x, y, z])
+        dir_camera /= np.linalg.norm(dir_camera)
+        dirs_camera.append(dir_camera)
 
-    t = (target_height - camera_pos[2]) / direction[2]
-    if t < 0:
-        raise ValueError("Target height is not in front of the camera.")
+    # Transform direction vectors to world space
+    dirs_world = [rot_matrix @ dir_camera for dir_camera in dirs_camera]
 
-    # Compute center point at target_height
-    intersection_point = camera_pos + t * direction
+    # Compute intersection points with the plane z = target_height
+    x_coords = []
+    y_coords = []
 
-    # Compute half frustum dimensions at distance t
-    half_height = t * np.tan(fov_rad / 2)
-    half_width = half_height / aspect  # Corrected formula
+    for dir_world in dirs_world:
+        denom = dir_world[2]
+        if np.isclose(denom, 0):
+            # The ray is parallel to the plane; skip or handle appropriately
+            continue
 
-    # Compute corners of the frustum at target_height
-    top_left = intersection_point - half_width * right_vector + half_height * up_vector
-    top_right = intersection_point + half_width * right_vector + half_height * up_vector
-    bottom_left = intersection_point - half_width * right_vector - half_height * up_vector
-    bottom_right = intersection_point + half_width * right_vector - half_height * up_vector
+        t = (target_height - camera_pos[2]) / denom
+        # Intersection point
+        intersection_point = camera_pos + dir_world * t
 
-    # Get x and y coordinates
-    x_coords = [top_left[0], top_right[0], bottom_left[0], bottom_right[0]]
-    y_coords = [top_left[1], top_right[1], bottom_left[1], bottom_right[1]]
+        # Collect x and y coordinates
+        x_coords.append(intersection_point[0])
+        y_coords.append(intersection_point[1])
 
+    # Determine xlim and ylim
     xlim = (min(x_coords), max(x_coords))
     ylim = (min(y_coords), max(y_coords))
 
     return xlim, ylim
+
 
 if __name__ == '__main__':
     physicsClient = p.connect(p.GUI)
@@ -322,22 +309,21 @@ if __name__ == '__main__':
 
     fig, axes = initialize_visual_plots()
 
-    cam_target_pos, cam_distance = [0, 0, 0.75], 2
+    cam_target_pos, cam_distance = [0, 0, 0.0], 2.0
     width, height = 64 * 4, 64 * 3
     cam_yaw, cam_pitch, cam_roll = 90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
+    visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(
+        cameraTargetPosition=cam_target_pos, distance=cam_distance,
+        yaw=cam_yaw, pitch=cam_pitch, roll=cam_roll, upAxisIndex=2
+    )
     workspace_xlim, workspace_ylim = compute_camera_fov_at_height(
-        cam_target_pos=cam_target_pos,
-        cam_distance=cam_distance,
-        cam_yaw=cam_yaw,
-        cam_pitch=cam_pitch,
-        cam_roll=cam_roll,
+        view_matrix=view_matrix,
         fov=fov, aspect=aspect, target_height=0.0
     )
     workspace_zlim = [0.0, 1.0]
-
-    visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
 
     # Simulation loop
     for _ in range(1000):
@@ -358,12 +344,12 @@ if __name__ == '__main__':
             width=width, height=height, view_matrix=view_matrix, to_world=True
         )
 
-        point_cloud_to_height_map(
+        color_heightmap, depth_heightmap = point_cloud_to_height_map(
             point_cloud=point_cloud, colors=colors,
             workspace_xlim=workspace_xlim, workspace_ylim=workspace_ylim, workspace_zlim=workspace_zlim)
 
         # Update the plots
-        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, fig, axes)
+        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes)
 
     # Disconnect the PyBullet simulation
     p.disconnect()
