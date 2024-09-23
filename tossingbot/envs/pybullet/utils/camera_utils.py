@@ -62,17 +62,34 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     return point_cloud, colors
 
 def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_ylim, workspace_zlim, heightmap_resolution=0.005):
-    # Compute heightmap size based on workspace limits and resolution
-    heightmap_size = np.round((
-        (workspace_xlim[1] - workspace_xlim[0]) / heightmap_resolution,
-        (workspace_ylim[1] - workspace_ylim[0]) / heightmap_resolution
-    )).astype(int)
+    """
+    Converts a point cloud to a heightmap with swapped x and y axes.
 
+    Parameters:
+    - point_cloud: numpy array of shape (N, 3) representing the 3D points.
+    - colors: numpy array of shape (N, 3) representing the RGB colors for each point.
+    - workspace_xlim: tuple (min_x, max_x) defining the x-axis workspace limits.
+    - workspace_ylim: tuple (min_y, max_y) defining the y-axis workspace limits.
+    - workspace_zlim: tuple (min_z, max_z) defining the z-axis (height) workspace limits.
+    - heightmap_resolution: float representing the size of each pixel in meters.
+
+    Returns:
+    - color_heightmap: numpy array of shape (x_size, y_size, 3) with RGB values.
+    - depth_heightmap: numpy array of shape (x_size, y_size) with depth values.
+    """
+    
+    # Compute heightmap size based on workspace limits and resolution
+    # Desired order: (x_size, y_size)
+    heightmap_size = np.round((
+        (workspace_xlim[1] - workspace_xlim[0]) / heightmap_resolution,  # x dimension
+        (workspace_ylim[1] - workspace_ylim[0]) / heightmap_resolution   # y dimension
+    )).astype(int)
+    
     # Sort point cloud by z (height)
     sort_z_ind = np.argsort(point_cloud[:, 2])
     point_cloud = point_cloud[sort_z_ind]
     colors = colors[sort_z_ind]
-
+    
     # Filter points within workspace boundaries
     valid_mask = (
         (point_cloud[:, 0] >= workspace_xlim[0]) & (point_cloud[:, 0] < workspace_xlim[1]) &
@@ -80,32 +97,36 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
         (point_cloud[:, 2] >= workspace_zlim[0]) & (point_cloud[:, 2] < workspace_zlim[1])
     )
     point_cloud, colors = point_cloud[valid_mask], colors[valid_mask]
-
+    
     # Project points to heightmap pixel coordinates
     heightmap_pix_x = np.floor((point_cloud[:, 0] - workspace_xlim[0]) / heightmap_resolution).astype(int)
     heightmap_pix_y = np.floor((point_cloud[:, 1] - workspace_ylim[0]) / heightmap_resolution).astype(int)
-
+    
     # Clip the indices to ensure they are within bounds
     heightmap_pix_x = np.clip(heightmap_pix_x, 0, heightmap_size[0] - 1)
     heightmap_pix_y = np.clip(heightmap_pix_y, 0, heightmap_size[1] - 1)
-
+    
     # Initialize heightmaps for RGB channels and depth
-    color_heightmap = np.zeros((heightmap_size[1], heightmap_size[0], 3), dtype=np.uint8)
-    depth_heightmap = np.zeros((heightmap_size[1], heightmap_size[0]))
-
+    color_heightmap = np.zeros((heightmap_size[0], heightmap_size[1], 3), dtype=np.uint8)
+    depth_heightmap = np.zeros((heightmap_size[0], heightmap_size[1]))
+    
     # Scale colors to [0, 255] and convert to uint8
     colors_uint8 = (colors * 255).astype(np.uint8)
-
+    
     # Assign RGB values to heightmap
-    color_heightmap[heightmap_pix_y, heightmap_pix_x] = colors_uint8[:, :3]
-
+    color_heightmap[heightmap_pix_x, heightmap_pix_y] = colors_uint8[:, :3]
+    
     # Assign depth values to heightmap (height from the bottom of the workspace)
     z_bottom = workspace_zlim[0]
-    depth_heightmap[heightmap_pix_y, heightmap_pix_x] = point_cloud[:, 2] - z_bottom
-
+    depth_heightmap[heightmap_pix_x, heightmap_pix_y] = point_cloud[:, 2] - z_bottom
+    
     # Remove invalid depth values (set as 0 or NaN)
     depth_heightmap[depth_heightmap < 0] = 0
 
+    # Flip heightmaps left-right
+    color_heightmap = np.fliplr(color_heightmap)
+    depth_heightmap = np.fliplr(depth_heightmap)
+    
     return color_heightmap, depth_heightmap
 
 ############ Visualization ############
@@ -130,22 +151,21 @@ def initialize_visual_plots(figsize=(18, 6)):
     ax_heightmap.set_title("Depth Heightmap")
     ax_heightmap.axis('off')
 
+    # Initialize with a placeholder depth image
+    depth_heightmap_placeholder = np.zeros((6, 6))
+    depth_img = ax_heightmap.imshow(depth_heightmap_placeholder, cmap='viridis')
+
+    # Create colorbar and store references
+    colorbar = fig.colorbar(depth_img, ax=ax_heightmap)
+    ax_heightmap.depth_img = depth_img
+    ax_heightmap.colorbar = colorbar
+
     return fig, (ax_rgb, ax_pointcloud, ax_heightmap)
 
-def plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes, xlim=None, ylim=None, zlim=None):
+def plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes, 
+                                  xlim=None, ylim=None, zlim=None):
     """
     Plot the RGB image, Point Cloud, and Heightmap (Depth Map) in subplots.
-    
-    Args:
-    - rgb_img: RGB image (H, W, 3) numpy array.
-    - point_cloud: Point cloud (N, 3) numpy array.
-    - colors: Colors corresponding to the point cloud (N, 3) numpy array.
-    - depth_heightmap: Depth heightmap (H, W) numpy array.
-    - fig: Matplotlib figure object.
-    - axes: A tuple containing the RGB image axis, point cloud axis, and heightmap axis.
-    - xlim: Limits for the x-axis in the point cloud plot.
-    - ylim: Limits for the y-axis in the point cloud plot.
-    - zlim: Limits for the z-axis in the point cloud plot.
     """
     ax_rgb, ax_pointcloud, ax_heightmap = axes
 
@@ -162,16 +182,20 @@ def plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap,
     ax_pointcloud.set_xlabel("X")
     ax_pointcloud.set_ylabel("Y")
     ax_pointcloud.set_zlabel("Z")
-    ax_pointcloud.set_xlim(xlim)
-    ax_pointcloud.set_ylim(ylim)
-    ax_pointcloud.set_zlim(zlim)
+    if xlim:
+        ax_pointcloud.set_xlim(xlim)
+    if ylim:
+        ax_pointcloud.set_ylim(ylim)
+    if zlim:
+        ax_pointcloud.set_zlim(zlim)
 
-    # Plot the depth heightmap using a colormap to represent the depth values
-    ax_heightmap.clear()
-    depth_img = ax_heightmap.imshow(depth_heightmap, cmap='viridis')
-    fig.colorbar(depth_img, ax=ax_heightmap)  # Add colorbar to represent depth values
+    # Update the depth heightmap image
+    ax_heightmap.depth_img.set_data(depth_heightmap)
+    ax_heightmap.depth_img.set_clim(vmin=depth_heightmap.min(), vmax=depth_heightmap.max())
+    ax_heightmap.colorbar.update_normal(ax_heightmap.depth_img)
+
     ax_heightmap.set_title("Depth Heightmap")
-    ax_heightmap.axis('off')
+    ax_heightmap.axis('off')  # Keep axis off
 
     # Redraw the figure
     plt.draw()
