@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 
 from tossingbot.envs.pybullet.utils.math_utils import rotation_matrix_to_quaternion
 
+# NOTE: I'm not pretty sure whether the visualization and transformation methods work correctly when cam_roll is not 0.
+
 ############### Observation for TossObjects env ###############
 def capture_rgbd_image(cam_target_pos=[0, 0, 0], cam_distance=2, width=640, height=480,
                        cam_yaw=90, cam_pitch=-90, cam_roll=0, fov=60, aspect=1.0, near=0.01, far=10.0):
@@ -32,8 +34,7 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     """
     Convert depth image to a colored point cloud.
     """
-    fy = (height / 2.0) / np.tan(np.radians(fov / 2.0))
-    fx = fy * aspect
+    f = (height / 2.0) / np.tan(np.radians(fov / 2.0))
     cx, cy = width / 2.0, height / 2.0
     
     u, v = np.meshgrid(np.arange(width), np.arange(height))
@@ -44,8 +45,8 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     u_valid, v_valid = uu_flat[valid_mask], vv_flat[valid_mask]
     depth_valid, rgb_valid = depth_flat[valid_mask], rgb_flat[valid_mask]
 
-    x_camera = (u_valid - cx) / fx * depth_valid
-    y_camera = -(v_valid - cy) / fy * depth_valid   # # Invert y-axis to match PyBullet's upward direction
+    x_camera = (u_valid - cx) / f * depth_valid
+    y_camera = -(v_valid - cy) / f * depth_valid   # # Invert y-axis to match PyBullet's upward direction
     z_camera = -depth_valid # Invert z-axis to match PyBullet's coordinate system
     
     point_cloud = np.stack((x_camera, y_camera, z_camera), axis=1)
@@ -234,20 +235,32 @@ def extract_camera_orientation_from_view_matrix(view_matrix):
     rotation_matrix_T = view_mat[:3, :3].T
     return rotation_matrix_to_quaternion(rotation_matrix_T)
 
-def compute_camera_fov_at_height(view_matrix, fov, aspect, target_height):
+def compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, target_height):
     """
     Calculate the x and y limits (field of view) at a given height based on camera parameters.
 
     Args:
-        view_matrix (list or np.array): The view matrix of the camera.
+        cam_target_pos (list or np.array): The target position the camera is looking at [x, y, z].
+        cam_distance (float): Distance from the camera to the target position.
+        cam_yaw (float): Yaw angle of the camera in degrees.
+        cam_pitch (float): Pitch angle of the camera in degrees.
+        cam_roll (float): Roll angle of the camera in degrees.
         fov (float): Vertical field of view in degrees.
         aspect (float): Aspect ratio (width / height).
-        target_height (float): The height (z) at which to calculate the field of view.
+        target_height (float): The height (z-coordinate) at which to calculate the field of view.
 
     Returns:
         tuple: (xlim, ylim) representing the field of view at the given height in world coordinates.
     """
-    # Extract camera position and orientation
+    # Compute the view matrix using the camera parameters
+    view_matrix = p.computeViewMatrixFromYawPitchRoll(
+        cameraTargetPosition=cam_target_pos,
+        distance=cam_distance,
+        yaw=cam_yaw,
+        pitch=cam_pitch,
+        roll=cam_roll,
+        upAxisIndex=2
+    )
     camera_pos = np.array(extract_camera_position_from_view_matrix(view_matrix))
     camera_orientation = extract_camera_orientation_from_view_matrix(view_matrix)
 
@@ -307,23 +320,15 @@ if __name__ == '__main__':
     p.loadURDF("plane.urdf")
     p.loadURDF("r2d2.urdf", [0, 0, 1])
 
-    fig, axes = initialize_visual_plots()
-
     cam_target_pos, cam_distance = [0, 0, 0.0], 2.0
     width, height = 64 * 4, 64 * 3
     cam_yaw, cam_pitch, cam_roll = 90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
+    camera_view_xlim, camera_view_ylim = compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, target_height=0.0)
+    camera_view_zlim = [0.0, cam_target_pos[2] + cam_distance]
     visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
-    view_matrix = p.computeViewMatrixFromYawPitchRoll(
-        cameraTargetPosition=cam_target_pos, distance=cam_distance,
-        yaw=cam_yaw, pitch=cam_pitch, roll=cam_roll, upAxisIndex=2
-    )
-    workspace_xlim, workspace_ylim = compute_camera_fov_at_height(
-        view_matrix=view_matrix,
-        fov=fov, aspect=aspect, target_height=0.0
-    )
-    workspace_zlim = [0.0, 1.0]
+    fig, axes = initialize_visual_plots()
 
     # Simulation loop
     for _ in range(1000):
@@ -346,7 +351,7 @@ if __name__ == '__main__':
 
         color_heightmap, depth_heightmap = point_cloud_to_height_map(
             point_cloud=point_cloud, colors=colors,
-            workspace_xlim=workspace_xlim, workspace_ylim=workspace_ylim, workspace_zlim=workspace_zlim)
+            workspace_xlim=camera_view_xlim, workspace_ylim=camera_view_ylim, workspace_zlim=camera_view_zlim)
 
         # Update the plots
         plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes)
