@@ -85,12 +85,19 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     heightmap_pix_x = np.floor((point_cloud[:, 0] - workspace_xlim[0]) / heightmap_resolution).astype(int)
     heightmap_pix_y = np.floor((point_cloud[:, 1] - workspace_ylim[0]) / heightmap_resolution).astype(int)
 
+    # Clip the indices to ensure they are within bounds
+    heightmap_pix_x = np.clip(heightmap_pix_x, 0, heightmap_size[0] - 1)
+    heightmap_pix_y = np.clip(heightmap_pix_y, 0, heightmap_size[1] - 1)
+
     # Initialize heightmaps for RGB channels and depth
     color_heightmap = np.zeros((heightmap_size[1], heightmap_size[0], 3), dtype=np.uint8)
     depth_heightmap = np.zeros((heightmap_size[1], heightmap_size[0]))
 
+    # Scale colors to [0, 255] and convert to uint8
+    colors_uint8 = (colors * 255).astype(np.uint8)
+
     # Assign RGB values to heightmap
-    color_heightmap[heightmap_pix_y, heightmap_pix_x] = colors[:, :3]
+    color_heightmap[heightmap_pix_y, heightmap_pix_x] = colors_uint8[:, :3]
 
     # Assign depth values to heightmap (height from the bottom of the workspace)
     z_bottom = workspace_zlim[0]
@@ -322,7 +329,7 @@ if __name__ == '__main__':
 
     cam_target_pos, cam_distance = [0, 0, 0.0], 2.0
     width, height = 64 * 4, 64 * 3
-    cam_yaw, cam_pitch, cam_roll = 90, -90, 0
+    cam_yaw, cam_pitch, cam_roll = -90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
     camera_view_xlim, camera_view_ylim = compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, target_height=0.0)
