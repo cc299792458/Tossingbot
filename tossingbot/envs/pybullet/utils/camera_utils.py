@@ -60,38 +60,94 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
-def point_cloud_to_height_map(point_cloud, colors, workspace_width, workspace_length, workspace_position):
-    height_map = None
+def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_ylim, workspace_zlim, heightmap_resolution=0.005):
+    # Compute heightmap size based on workspace limits and resolution
+    heightmap_size = np.round((
+        (workspace_xlim[1] - workspace_xlim[0]) / heightmap_resolution,
+        (workspace_ylim[1] - workspace_ylim[0]) / heightmap_resolution
+    )).astype(int)
 
-    return height_map
+    # Sort point cloud by z (height)
+    sort_z_ind = np.argsort(point_cloud[:, 2])
+    point_cloud = point_cloud[sort_z_ind]
+    colors = colors[sort_z_ind]
+
+    # Filter points within workspace boundaries
+    valid_mask = (
+        (point_cloud[:, 0] >= workspace_xlim[0]) & (point_cloud[:, 0] < workspace_xlim[1]) &
+        (point_cloud[:, 1] >= workspace_ylim[0]) & (point_cloud[:, 1] < workspace_ylim[1]) &
+        (point_cloud[:, 2] >= workspace_zlim[0]) & (point_cloud[:, 2] < workspace_zlim[1])
+    )
+    point_cloud, colors = point_cloud[valid_mask], colors[valid_mask]
+
+    # Project points to heightmap pixel coordinates
+    heightmap_pix_x = np.floor((point_cloud[:, 0] - workspace_xlim[0]) / heightmap_resolution).astype(int)
+    heightmap_pix_y = np.floor((point_cloud[:, 1] - workspace_ylim[0]) / heightmap_resolution).astype(int)
+
+    # Initialize heightmaps for RGB channels and depth
+    color_heightmap = np.zeros((heightmap_size[1], heightmap_size[0], 3), dtype=np.uint8)
+    depth_heightmap = np.zeros((heightmap_size[1], heightmap_size[0]))
+
+    # Assign RGB values to heightmap
+    color_heightmap[heightmap_pix_y, heightmap_pix_x] = colors[:, :3]
+
+    # Assign depth values to heightmap (height from the bottom of the workspace)
+    z_bottom = workspace_zlim[0]
+    depth_heightmap[heightmap_pix_y, heightmap_pix_x] = point_cloud[:, 2] - z_bottom
+
+    # Remove invalid depth values (set as 0 or NaN)
+    depth_heightmap[depth_heightmap < 0] = 0
+
+    return color_heightmap, depth_heightmap
 
 ############ Visualization ############
-def initialize_visual_plots(figsize=(12, 6)):
+def initialize_visual_plots(figsize=(18, 6)):
     """
-    Initialize the matplotlib figure for real-time display.
+    Initialize the matplotlib figure for real-time display with RGB image, point cloud, and heightmap.
     """
     plt.ion()
     fig = plt.figure(figsize=figsize)
-    ax_rgb = fig.add_subplot(1, 2, 1)
-    ax_pointcloud = fig.add_subplot(1, 2, 2, projection='3d')
+    ax_rgb = fig.add_subplot(1, 3, 1)
+    ax_pointcloud = fig.add_subplot(1, 3, 2, projection='3d')
+    ax_heightmap = fig.add_subplot(1, 3, 3)
+    
     ax_rgb.set_title("RGB Image")
     ax_rgb.axis('off')
+
     ax_pointcloud.set_title("Colored Point Cloud")
     ax_pointcloud.set_xlabel("X")
     ax_pointcloud.set_ylabel("Y")
     ax_pointcloud.set_zlabel("Z")
-    return fig, (ax_rgb, ax_pointcloud)
 
-def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim=None, zlim=None):
+    ax_heightmap.set_title("Depth Heightmap")
+    ax_heightmap.axis('off')
+
+    return fig, (ax_rgb, ax_pointcloud, ax_heightmap)
+
+def plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes, xlim=None, ylim=None, zlim=None):
     """
-    Plot the RGB image and Point Cloud in two subplots.
+    Plot the RGB image, Point Cloud, and Heightmap (Depth Map) in subplots.
+    
+    Args:
+    - rgb_img: RGB image (H, W, 3) numpy array.
+    - point_cloud: Point cloud (N, 3) numpy array.
+    - colors: Colors corresponding to the point cloud (N, 3) numpy array.
+    - depth_heightmap: Depth heightmap (H, W) numpy array.
+    - fig: Matplotlib figure object.
+    - axes: A tuple containing the RGB image axis, point cloud axis, and heightmap axis.
+    - xlim: Limits for the x-axis in the point cloud plot.
+    - ylim: Limits for the y-axis in the point cloud plot.
+    - zlim: Limits for the z-axis in the point cloud plot.
     """
-    ax_rgb, ax_pointcloud = axes
+    ax_rgb, ax_pointcloud, ax_heightmap = axes
+
+    # Update RGB Image
     ax_rgb.clear()
     ax_rgb.imshow(rgb_img)
     ax_rgb.set_title("RGB Image")
     ax_rgb.axis('off')
 
+    # Update Point Cloud
     ax_pointcloud.clear()
     ax_pointcloud.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c=colors, s=1)
     ax_pointcloud.set_title("Colored Point Cloud")
@@ -102,6 +158,14 @@ def plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes, xlim=None, ylim
     ax_pointcloud.set_ylim(ylim)
     ax_pointcloud.set_zlim(zlim)
 
+    # Plot the depth heightmap using a colormap to represent the depth values
+    ax_heightmap.clear()
+    depth_img = ax_heightmap.imshow(depth_heightmap, cmap='viridis')
+    fig.colorbar(depth_img, ax=ax_heightmap)  # Add colorbar to represent depth values
+    ax_heightmap.set_title("Depth Heightmap")
+    ax_heightmap.axis('off')
+
+    # Redraw the figure
     plt.draw()
     plt.pause(0.001)
 
@@ -170,6 +234,84 @@ def extract_camera_orientation_from_view_matrix(view_matrix):
     rotation_matrix_T = view_mat[:3, :3].T
     return rotation_matrix_to_quaternion(rotation_matrix_T)
 
+import numpy as np
+
+def compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, target_height):
+    """
+    Calculate the x and y limits (horizontal field of view) at a given height based on camera parameters.
+
+    Args:
+        cam_target_pos (list): The target position the camera is looking at [x, y, z].
+        cam_distance (float): Distance from the camera to the target position.
+        cam_yaw (float): Yaw angle of the camera in degrees.
+        cam_pitch (float): Pitch angle of the camera in degrees.
+        cam_roll (float): Roll angle of the camera in degrees (not used here).
+        fov (float): Field of view in degrees (vertical FOV).
+        aspect (float): Aspect ratio (width / height).
+        target_height (float): The height (z) at which to calculate the field of view.
+
+    Returns:
+        tuple: (xlim, ylim) representing the horizontal field of view at the given height.
+    """
+    # Convert angles to radians
+    yaw_rad = np.radians(cam_yaw)
+    pitch_rad = np.radians(cam_pitch)
+    fov_rad = np.radians(fov)
+
+    # Compute camera direction vector
+    dx = np.cos(pitch_rad) * np.sin(yaw_rad)
+    dy = np.cos(pitch_rad) * np.cos(yaw_rad)
+    dz = np.sin(pitch_rad)
+    direction = np.array([dx, dy, dz])
+    direction /= np.linalg.norm(direction)
+
+    # Compute camera position
+    cam_target_pos = np.array(cam_target_pos)
+    camera_pos = cam_target_pos - cam_distance * direction
+
+    # Handle special case when camera is pointing straight up or down
+    if np.isclose(np.abs(direction[2]), 1.0):
+        # Direction is along z-axis
+        right_vector = np.array([1, 0, 0])
+        up_vector = np.array([0, 1, 0]) if direction[2] < 0 else np.array([0, -1, 0])
+    else:
+        # Compute right and up vectors
+        up_vector = np.array([0, 0, 1])
+        right_vector = np.cross(direction, up_vector)
+        right_vector /= np.linalg.norm(right_vector)
+        up_vector = np.cross(right_vector, direction)
+        up_vector /= np.linalg.norm(up_vector)
+
+    # Compute distance along direction vector to target_height
+    if np.isclose(direction[2], 0):
+        raise ValueError("Camera direction is parallel to the target plane.")
+
+    t = (target_height - camera_pos[2]) / direction[2]
+    if t < 0:
+        raise ValueError("Target height is not in front of the camera.")
+
+    # Compute center point at target_height
+    intersection_point = camera_pos + t * direction
+
+    # Compute half frustum dimensions at distance t
+    half_height = t * np.tan(fov_rad / 2)
+    half_width = half_height / aspect  # Corrected formula
+
+    # Compute corners of the frustum at target_height
+    top_left = intersection_point - half_width * right_vector + half_height * up_vector
+    top_right = intersection_point + half_width * right_vector + half_height * up_vector
+    bottom_left = intersection_point - half_width * right_vector - half_height * up_vector
+    bottom_right = intersection_point + half_width * right_vector - half_height * up_vector
+
+    # Get x and y coordinates
+    x_coords = [top_left[0], top_right[0], bottom_left[0], bottom_right[0]]
+    y_coords = [top_left[1], top_right[1], bottom_left[1], bottom_right[1]]
+
+    xlim = (min(x_coords), max(x_coords))
+    ylim = (min(y_coords), max(y_coords))
+
+    return xlim, ylim
+
 if __name__ == '__main__':
     physicsClient = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -185,6 +327,15 @@ if __name__ == '__main__':
     cam_yaw, cam_pitch, cam_roll = 90, -90, 0
     fov, aspect = 45, 1.33
     near, far = 0.01, 10.0
+    workspace_xlim, workspace_ylim = compute_camera_fov_at_height(
+        cam_target_pos=cam_target_pos,
+        cam_distance=cam_distance,
+        cam_yaw=cam_yaw,
+        cam_pitch=cam_pitch,
+        cam_roll=cam_roll,
+        fov=fov, aspect=aspect, target_height=0.0
+    )
+    workspace_zlim = [0.0, 1.0]
 
     visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
 
@@ -207,8 +358,12 @@ if __name__ == '__main__':
             width=width, height=height, view_matrix=view_matrix, to_world=True
         )
 
+        point_cloud_to_height_map(
+            point_cloud=point_cloud, colors=colors,
+            workspace_xlim=workspace_xlim, workspace_ylim=workspace_ylim, workspace_zlim=workspace_zlim)
+
         # Update the plots
-        plot_rgb_pointcloud(rgb_img, point_cloud, colors, fig, axes)
+        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, fig, axes)
 
     # Disconnect the PyBullet simulation
     p.disconnect()

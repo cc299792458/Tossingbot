@@ -47,7 +47,7 @@ class TossObjects(BaseScene):
         default_visualize_config = {
             "visualize_coordinate_frames": True,
             "visualize_camera": True,
-            "visualize_visual_plots": False,
+            "visualize_visual_plots": True,
         }
         if visualize_config is not None:
             default_visualize_config.update(visualize_config)
@@ -69,7 +69,7 @@ class TossObjects(BaseScene):
                             default_scene_config['workspace_position'][0] + default_scene_config['workspace_length'] / 2],
             "workspace_ylim": [default_scene_config['workspace_position'][1] - default_scene_config['workspace_width'] / 2, 
                             default_scene_config['workspace_position'][1] + default_scene_config['workspace_width'] / 2],
-            "workspace_zlim": [0.0, 0.4]
+            "workspace_zlim": [0.01, 0.4]
         })
         if scene_config is not None:
             default_scene_config.update(scene_config)
@@ -88,7 +88,7 @@ class TossObjects(BaseScene):
 
         # Default objects configuration
         default_objects_config = {
-            "n_object": 4,
+            "n_object": 1,
             "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
         }
         if objects_config is not None:
@@ -99,8 +99,8 @@ class TossObjects(BaseScene):
         default_camera_config = {
             "cam_target_pos": [*self.scene_config['workspace_position'], 0.0],
             "cam_distance": self.scene_config['workspace_length'] / 2,
-            "width": 640,
-            "height": 480,
+            "width": int(self.scene_config["workspace_width"] * 200),
+            "height": int(self.scene_config["workspace_length"] * 200),
             "cam_yaw": 90,
             "cam_pitch": -90,
             "cam_roll": 0,
