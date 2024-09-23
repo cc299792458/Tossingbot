@@ -4,10 +4,11 @@ from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
 from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
 from tossingbot.envs.pybullet.utils.objects_utils import (
+    create_sphere,
     create_box, 
-    create_capsule, 
     create_cylinder, 
-    create_sphere
+    create_capsule,
+    random_color,
 )
 from tossingbot.envs.pybullet.utils.camera_utils import (
     visualize_camera,
@@ -55,17 +56,21 @@ class TossObjects(BaseScene):
         default_scene_config = {
             "workspace_length": 0.3,
             "workspace_width": 0.4,
-            "workspace_position": [0.55, 0],
+            "workspace_position": [0.3, 0],
             "box_length": 0.25,
             "box_width": 0.15,
-            "box_height": 0.2,
-            "box_n_rows": 4,
+            "box_height": 0.1,
+            "box_n_rows": 3,
             "box_n_cols": 3,
-            "box_position": [1.375, 0.0],
-            "workspace_xlim": [0.55 - 0.3 / 2, 0.55 + 0.3 / 2],
-            "workspace_ylim": [0 - 0.4 / 2, 0 + 0.4 / 2],
-            "workspace_zlim": [0.0, 0.2],
+            "box_position": [1.0, 0.0],
         }
+        default_scene_config.update({
+            "workspace_xlim": [default_scene_config['workspace_position'][0] - default_scene_config['workspace_length'] / 2, 
+                            default_scene_config['workspace_position'][0] + default_scene_config['workspace_length'] / 2],
+            "workspace_ylim": [default_scene_config['workspace_position'][1] - default_scene_config['workspace_width'] / 2, 
+                            default_scene_config['workspace_position'][1] + default_scene_config['workspace_width'] / 2],
+            "workspace_zlim": [0.0, 0.4]
+        })
         if scene_config is not None:
             default_scene_config.update(scene_config)
         self.scene_config = default_scene_config
@@ -83,7 +88,8 @@ class TossObjects(BaseScene):
 
         # Default objects configuration
         default_objects_config = {
-            "n_object": 1,
+            "n_object": 4,
+            "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
         }
         if objects_config is not None:
             default_objects_config.update(objects_config)
@@ -145,7 +151,7 @@ class TossObjects(BaseScene):
             position=self.scene_config['box_position'],
         )
 
-    def load_workspace(self, length=0.3, width=0.4, position=[0.55, 0.0]):
+    def load_workspace(self, length=0.3, width=0.4, position=[0.3, 0.0]):
         """
         Create a workspace with walls in the simulation.
 
@@ -260,7 +266,11 @@ class TossObjects(BaseScene):
         margin = 0.1
         self.object_ids = []
 
+        assert self.objects_config['n_object'] <= 4, "Too many objects"
+
         for i in range(self.objects_config['n_object']):
+            # object_type = i
+            object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
             x = random.uniform(
                 self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin,
                 self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin,
@@ -269,9 +279,16 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin,
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
-
-            # Create a sphere for now (extendable to other object types)
-            self.object_ids.append(create_sphere(position=[x, y, 0.02], radius=0.02, color=[1, 0, 0, 1]))
+            if self.objects_config['object_types'][object_type] == 'sphere':
+                object_id = create_sphere(radius=0.02, position=[x, y, 0.05], color=[1, 0, 0, 1])
+            elif self.objects_config['object_types'][object_type] == 'box':
+                object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=[x, y, 0.05], color=[0, 1, 0, 1])
+            elif self.objects_config['object_types'][object_type] == 'cylindar':
+                object_id = create_cylinder(radius=0.02, height=0.02, position=[x, y, 0.05], color=[0, 0, 1, 1])
+            elif self.objects_config['object_types'][object_type] == 'capsule':
+                object_id = create_capsule(radius=0.02, height=0.02, position=[x, y, 0.05], color=random_color())
+            
+            self.object_ids.append(object_id)
 
     ############### Step ###############
     def post_simulation_step(self):
