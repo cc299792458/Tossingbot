@@ -61,7 +61,8 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
 
     return point_cloud, colors
 
-def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_ylim, workspace_zlim, heightmap_resolution=0.005):
+def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_ylim, workspace_zlim, heightmap_resolution=0.005,
+                              rgb_mean=None, rgb_std=None, depth_mean=None, depth_std=None):
     """
     Converts a point cloud to a heightmap with swapped x and y axes.
 
@@ -72,6 +73,10 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     - workspace_ylim: tuple (min_y, max_y) defining the y-axis workspace limits.
     - workspace_zlim: tuple (min_z, max_z) defining the z-axis (height) workspace limits.
     - heightmap_resolution: float representing the size of each pixel in meters.
+    - rgb_mean (list or np.ndarray): Mean values for RGB channels.
+    - rgb_std (list or np.ndarray): Standard deviation for RGB channels.
+    - depth_mean (float): Mean value for Depth channel.
+    - depth_std (float): Standard deviation for Depth channel.
 
     Returns:
     - color_heightmap: numpy array of shape (x_size, y_size, 3) with RGB values.
@@ -126,6 +131,14 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     # Flip heightmaps left-right
     color_heightmap = np.fliplr(color_heightmap)
     depth_heightmap = np.fliplr(depth_heightmap)
+
+    # Normalize the RGB heightmap if mean and std are provided
+    if rgb_mean is not None and rgb_std is not None:
+        color_heightmap = (color_heightmap - rgb_mean) / rgb_std
+    
+    # Normalize the depth heightmap if mean and std are provided
+    if depth_mean is not None and depth_std is not None:
+        depth_heightmap = (depth_heightmap - depth_mean) / depth_std
     
     return color_heightmap, depth_heightmap
 
