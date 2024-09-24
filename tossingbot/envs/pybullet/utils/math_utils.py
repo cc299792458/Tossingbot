@@ -92,3 +92,66 @@ def rotation_matrix_to_quaternion(rotation_matrix):
         qz = 0.25 * s
 
     return [qx, qy, qz, qw]
+
+def rotate_image_array(image_array, theta):
+    """
+    Rotate a 2D array (such as an image or heightmap) by a specified angle.
+
+    Parameters:
+        image_array (numpy.ndarray): The input 2D array of shape (H, W) or (H, W, C).
+        theta (float): The angle in degrees to rotate the image.
+
+    Returns:
+        rotated_image: The rotated 2D array.
+    """
+    # Get the original height and width
+    H, W = image_array.shape[:2]
+
+    # Calculate diagonal length
+    diag_length = np.sqrt(H**2 + W**2)
+
+    # Determine padding size to make it a multiple of 32
+    padding_height = int((diag_length - H) / 2)
+    padding_width = int((diag_length - W) / 2)
+
+    new_height, new_width = H + padding_height * 2, W + padding_width * 2
+
+    # Apply padding
+    if image_array.ndim == 3:
+        padded_image = np.pad(image_array, 
+                              ((padding_height, padding_height), 
+                               (padding_width, padding_width), 
+                               (0, 0)), 
+                              mode='constant', constant_values=0)
+    else:
+        padded_image = np.pad(image_array, 
+                              ((padding_height, padding_height), 
+                               (padding_width, padding_width)), 
+                              mode='constant', constant_values=0)
+
+    # Generate the rotation matrix
+    rotate_theta = np.radians(theta)
+    rotation_matrix = np.array([[np.cos(-rotate_theta), np.sin(-rotate_theta)],
+                                 [-np.sin(-rotate_theta), np.cos(-rotate_theta)]])
+
+    # Generate rotated coordinates
+    grid_y, grid_x = np.indices(padded_image.shape[:2])
+    coords = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1).astype(float)
+
+    # Adjust for padding
+    coords -= np.array([(W / 2) + padding_width - 0.5, (H / 2) + padding_height - 0.5])
+
+    # Apply rotation
+    rotated_coords = (rotation_matrix @ coords.T).T
+
+    # Convert coordinates to image indices
+    x_rotated = np.clip(rotated_coords[:, 0] + (W / 2 + padding_width - 0.5), 0, padded_image.shape[1] - 1)
+    y_rotated = np.clip(rotated_coords[:, 1] + (H / 2 + padding_height - 0.5), 0, padded_image.shape[0] - 1)
+
+    # Use nearest neighbor interpolation to fill the rotated image
+    rotated_image = padded_image[y_rotated.astype(int), x_rotated.astype(int)]
+
+    rotated_image = rotated_image.reshape(new_height, new_width, -1 if image_array.ndim == 3 else 1)
+
+    # Remove padding from the result
+    return rotated_image[padding_height:-padding_height, padding_width:-padding_width]

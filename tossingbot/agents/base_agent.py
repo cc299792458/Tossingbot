@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class BaseAgent(nn.Module):
-    def __init__(self, perception_module, grasp_module, throw_module):
+    def __init__(self, perception_module, grasping_module, throwing_module):
         """
         Initialize the BaseAgent for TossingBot.
         
@@ -11,15 +11,15 @@ class BaseAgent(nn.Module):
         
         Args:
             perception_module (nn.Module): Neural network module for perception, processes visual input I.
-            grasp_module (nn.Module): Neural network module for predicting grasping parameters.
-            throw_module (nn.Module): Neural network module for predicting throwing parameters.
+            grasping_module (nn.Module): Neural network module for predicting grasping parameters.
+            throwing_module (nn.Module): Neural network module for predicting throwing parameters.
         """
         super(BaseAgent, self).__init__()
         
         # Assign the modules
         self.perception_module = perception_module
-        self.grasp_module = grasp_module
-        self.throw_module = throw_module
+        self.grasping_module = grasping_module
+        self.throwing_module = throwing_module
 
     def forward(self, I, p):
         """
@@ -36,9 +36,9 @@ class BaseAgent(nn.Module):
         mu = self.perception_module(I)
 
         # Step 2: Use the perception output (mu) and target position (p) to predict grasping parameters (phi_g)
-        phi_g = self.grasp_module(mu, p)
+        phi_g = self.grasping_module(mu, p)
 
         # Step 3: Use the same perception output (mu) and target position (p) to predict throwing parameters (phi_t)
-        phi_t = self.throw_module(mu, p)
+        phi_t = self.throwing_module(mu, p)
 
         return phi_g, phi_t

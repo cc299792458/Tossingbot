@@ -6,7 +6,7 @@ import pybullet_data
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-from tossingbot.envs.pybullet.utils.math_utils import rotation_matrix_to_quaternion
+from tossingbot.envs.pybullet.utils.math_utils import rotation_matrix_to_quaternion, rotate_2d_array
 
 # NOTE: I'm not pretty sure whether the visualization and transformation methods work correctly when cam_roll is not 0.
 
@@ -470,8 +470,11 @@ if __name__ == '__main__':
             workspace_xlim=camera_view_xlim, workspace_ylim=camera_view_ylim, workspace_zlim=camera_view_zlim,
             rgb_mean=rgb_mean, rgb_std=rgb_std, depth_mean=depth_mean, depth_std=depth_std)
 
+        # Rotate the depth heightmap for example
+        rotated_depth_heightmap = rotate_2d_array(depth_heightmap, theta=180)
+
         # Update the plots
-        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes)
+        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, rotated_depth_heightmap, fig, axes)
 
     # Disconnect the PyBullet simulation
     p.disconnect()

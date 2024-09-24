@@ -14,10 +14,11 @@ from tossingbot.envs.pybullet.utils.objects_utils import (
 from tossingbot.envs.pybullet.utils.camera_utils import (
     visualize_camera,
     capture_rgbd_image, 
-    point_cloud_to_height_map,
     depth_to_point_cloud_with_color, 
+    point_cloud_to_height_map,
     initialize_visual_plots,
     plot_rgb_pointcloud_heightmap,
+    compute_camera_fov_at_height,
 )
 
 class TossObjects(BaseScene):
@@ -89,7 +90,7 @@ class TossObjects(BaseScene):
 
         # Default objects configuration
         default_objects_config = {
-            "n_object": 4,
+            "n_object": 3,
             "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
         }
         if objects_config is not None:
@@ -102,7 +103,7 @@ class TossObjects(BaseScene):
             "cam_distance": self.scene_config['workspace_length'] / 2,
             "width": int(self.scene_config["workspace_width"] * 200),
             "height": int(self.scene_config["workspace_length"] * 200),
-            "cam_yaw": 90,
+            "cam_yaw": -90,
             "cam_pitch": -90,
             "cam_roll": 0,
             "fov": 90,
@@ -112,6 +113,20 @@ class TossObjects(BaseScene):
         }
         if camera_config is not None:
             default_camera_config.update(camera_config)
+        cam_view_xlim, cam_view_ylim = compute_camera_fov_at_height(
+            cam_target_pos=default_camera_config['cam_target_pos'],
+            cam_distance=default_camera_config['cam_distance'],
+            cam_yaw=default_camera_config['cam_yaw'],
+            cam_pitch=default_camera_config['cam_pitch'],
+            cam_roll=default_camera_config['cam_roll'],
+            fov=default_camera_config['fov'],
+            aspect=default_camera_config['aspect'],
+            target_height=0.0,
+            ) 
+        default_camera_config.update({
+            "cam_view_xlim": cam_view_xlim,
+            "cam_view_ylim": cam_view_ylim,
+        })
         self.camera_config = default_camera_config
 
         super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
@@ -162,7 +177,7 @@ class TossObjects(BaseScene):
             position (list): Center position [x, y] of the workspace.
         """
         thickness = 0.01
-        height = 0.1
+        height = 0.03
         color = [0.8, 0.8, 0.8, 1.0]
         self.workspace_ids = []
         
@@ -271,7 +286,7 @@ class TossObjects(BaseScene):
 
         self.object_ids = []
 
-        assert self.objects_config['n_object'] <= 4, "Too many objects"
+        assert self.objects_config['n_object'] <= 3, "Too many objects"
 
         for i in range(self.objects_config['n_object']):
             object_type = i
@@ -308,9 +323,9 @@ class TossObjects(BaseScene):
                 depth_heightmap=depth_heightmap,
                 fig=self.visual_plot_fig,
                 axes=self.visual_plot_axes,
-                xlim=self.scene_config['workspace_xlim'],
-                ylim=self.scene_config['workspace_ylim'],
-                zlim=self.scene_config['workspace_zlim'],
+                xlim=self.camera_config['cam_view_xlim'],
+                ylim=self.camera_config['cam_view_ylim'],
+                zlim=self.camera_config['workspace_zlim'],
             )
 
     def get_observation(self):
