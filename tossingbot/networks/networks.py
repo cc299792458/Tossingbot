@@ -36,7 +36,7 @@ class ResidualBlock(nn.Module):
 class PerceptionModule(nn.Module):
     def __init__(self):
         super(PerceptionModule, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(4, 64, kernel_size=3, padding=1)
         self.pool1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.rb1 = ResidualBlock(64, 128)  # From 64 channels to 128
         self.pool2 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -55,10 +55,10 @@ class PerceptionModule(nn.Module):
 class GraspingModule(nn.Module):
     def __init__(self):
         super(GraspingModule, self).__init__()
-        self.rb1 = ResidualBlock(256)
-        self.rb2 = ResidualBlock(128)
+        self.rb1 = ResidualBlock(512, 256)
+        self.rb2 = ResidualBlock(256, 128)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.rb3 = ResidualBlock(64)
+        self.rb3 = ResidualBlock(128, 64)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.conv_final = nn.Conv2d(64, 2, kernel_size=1)
 
@@ -74,10 +74,10 @@ class GraspingModule(nn.Module):
 class ThrowingModule(nn.Module):
     def __init__(self):
         super(ThrowingModule, self).__init__()
-        self.rb1 = ResidualBlock(256)
-        self.rb2 = ResidualBlock(128)
+        self.rb1 = ResidualBlock(512, 256)
+        self.rb2 = ResidualBlock(256, 128)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.rb3 = ResidualBlock(64)
+        self.rb3 = ResidualBlock(128, 64)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.conv_final = nn.Conv2d(64, 1, kernel_size=1)
 
@@ -97,11 +97,12 @@ if __name__ == '__main__':
     grasping_module = GraspingModule()
     throwing_module = ThrowingModule()
     
-    # Sample input tensor (Batch size 1, 3 channels, 224x224 image)
-    input_tensor = torch.randn(1, 3, 224, 224)
+    # Sample input tensor (Batch size 1, 4 channels, 180x140 image)
+    input_tensor = torch.randn(1, 4, 180, 140)
 
     # Pass input through Perception Module
     perception_output = perception_module(input_tensor)
+    print(f'Perception Output Shape: {perception_output.shape}')
 
     # Pass perception output to Grasping and Throwing Modules
     grasping_output = grasping_module(perception_output)
