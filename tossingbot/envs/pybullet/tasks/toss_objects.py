@@ -16,7 +16,7 @@ from tossingbot.envs.pybullet.utils.camera_utils import (
     point_cloud_to_height_map,
     depth_to_point_cloud_with_color, 
     initialize_visual_plots,
-    plot_rgb_pointcloud,
+    plot_rgb_pointcloud_heightmap,
 )
 
 class TossObjects(BaseScene):
@@ -88,7 +88,7 @@ class TossObjects(BaseScene):
 
         # Default objects configuration
         default_objects_config = {
-            "n_object": 1,
+            "n_object": 4,
             "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
         }
         if objects_config is not None:
@@ -269,8 +269,8 @@ class TossObjects(BaseScene):
         assert self.objects_config['n_object'] <= 4, "Too many objects"
 
         for i in range(self.objects_config['n_object']):
-            # object_type = i
-            object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
+            object_type = i
+            # object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
             x = random.uniform(
                 self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin,
                 self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin,
@@ -293,17 +293,21 @@ class TossObjects(BaseScene):
     ############### Step ###############
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
-            rgb_img, depth_img, point_cloud, colors, height_map = self.get_visual_observation()
-            plot_rgb_pointcloud(
+            rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap = self.get_visual_observation()
+            plot_rgb_pointcloud_heightmap(
                 rgb_img=rgb_img, 
                 point_cloud=point_cloud, 
                 colors=colors,
+                depth_heightmap=depth_heightmap,
                 fig=self.visual_plot_fig,
                 axes=self.visual_plot_axes,
+                xlim=self.scene_config['workspace_xlim'],
+                ylim=self.scene_config['workspace_ylim'],
+                zlim=self.scene_config['workspace_zlim'],
             )
 
     def get_observation(self):
-        rgb_img, depth_img, point_cloud, colors, height_map = self.get_visual_observation()
+        rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap = self.get_visual_observation()
     
     def get_visual_observation(self):
         # Capture rgbd image
@@ -332,44 +336,13 @@ class TossObjects(BaseScene):
                                                               to_world=True)
         
         # Generate height map
-        height_map = point_cloud_to_height_map(point_cloud=point_cloud, 
+        color_heightmap, depth_heightmap = point_cloud_to_height_map(point_cloud=point_cloud, 
                                                colors=colors, 
-                                               workspace_width=self.scene_config['workspace_width'],
-                                               workspace_length=self.scene_config['workspace_length'],
-                                               workspace_position=self.scene_config['workspace_position'])
-        # Capture rgbd image
-        rgb_img, depth_img, view_matrix = capture_rgbd_image(
-            cam_target_pos=self.camera_config['cam_target_pos'], 
-            cam_distance=self.camera_config['cam_distance'], 
-            width=self.camera_config['width'], 
-            height=self.camera_config['height'],
-            cam_yaw=self.camera_config['cam_yaw'], 
-            cam_pitch=self.camera_config['cam_pitch'], 
-            cam_roll=self.camera_config['cam_roll'],
-            fov=self.camera_config['fov'], 
-            aspect=self.camera_config['aspect'], 
-            near=self.camera_config['near'], 
-            far=self.camera_config['far']
-        )
-
-        # Generate point cloud with color
-        point_cloud, colors = depth_to_point_cloud_with_color(depth_img, 
-                                                              rgb_img, 
-                                                              fov=self.camera_config['fov'], 
-                                                              aspect=self.camera_config['aspect'], 
-                                                              width=self.camera_config['width'], 
-                                                              height=self.camera_config['height'], 
-                                                              view_matrix=view_matrix, 
-                                                              to_world=True)
+                                               workspace_xlim=self.scene_config['workspace_xlim'], 
+                                               workspace_ylim=self.scene_config['workspace_ylim'], 
+                                               workspace_zlim=self.scene_config['workspace_zlim'],)
         
-        # Generate height map
-        height_map = point_cloud_to_height_map(point_cloud=point_cloud, 
-                                               colors=colors, 
-                                               workspace_width=self.scene_config['workspace_width'],
-                                               workspace_length=self.scene_config['workspace_length'],
-                                               workspace_position=self.scene_config['workspace_position'])
-        
-        return rgb_img, depth_img, point_cloud, colors, height_map
+        return rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap
 
     def get_reward(self):
         raise NotImplementedError

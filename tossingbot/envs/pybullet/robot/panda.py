@@ -181,11 +181,10 @@ if __name__ == '__main__':
     while True:
         if not grasp_completed:
             grasp_completed = robot.grasp(tcp_target_pose=grasp_pose, post_grasp_pose=post_grasp_pose)
-        # # Wait for 48 / 240 second
-        # elif count < 48:
-        #     count += 1
         elif not throw_completed:
             throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
         p.stepSimulation()
         robot.visualize_tcp_trajectory()
         time.sleep(1./240.)
+
+    p.disconnect()

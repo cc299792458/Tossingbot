@@ -2,18 +2,33 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class ResidualBlock(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, in_channels, out_channels):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # If in_channels != out_channels, apply 1x1 convolution to residual connection
+        if in_channels != out_channels:
+            self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        else:
+            self.residual_conv = None
 
     def forward(self, x):
         residual = x
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
+
+        # Apply 1x1 convolution if necessary to match the number of channels
+        if self.residual_conv is not None:
+            residual = self.residual_conv(x)
+
         out += residual  # Residual connection
         out = F.relu(out)
         return out
@@ -23,10 +38,10 @@ class PerceptionModule(nn.Module):
         super(PerceptionModule, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
         self.pool1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.rb1 = ResidualBlock(128)
+        self.rb1 = ResidualBlock(64, 128)  # From 64 channels to 128
         self.pool2 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.rb2 = ResidualBlock(256)
-        self.rb3 = ResidualBlock(512)
+        self.rb2 = ResidualBlock(128, 256)  # From 128 channels to 256
+        self.rb3 = ResidualBlock(256, 512)  # From 256 channels to 512
 
     def forward(self, x):
         x = F.relu(self.conv1(x))

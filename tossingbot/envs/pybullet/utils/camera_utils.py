@@ -356,6 +356,8 @@ def compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitc
     return xlim, ylim
 
 
+
+
 if __name__ == '__main__':
     physicsClient = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
