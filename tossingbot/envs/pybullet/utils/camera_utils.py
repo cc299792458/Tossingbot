@@ -5,6 +5,7 @@ import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
 
+from tqdm import tqdm
 from tossingbot.envs.pybullet.utils.math_utils import rotation_matrix_to_quaternion
 
 # NOTE: I'm not pretty sure whether the visualization and transformation methods work correctly when cam_roll is not 0.
@@ -50,7 +51,7 @@ def depth_to_point_cloud_with_color(depth_img, rgb_img, fov, aspect, width, heig
     z_camera = -depth_valid # Invert z-axis to match PyBullet's coordinate system
     
     point_cloud = np.stack((x_camera, y_camera, z_camera), axis=1)
-    colors = rgb_valid.astype(np.float32) / 255.0
+    colors = rgb_valid.astype(np.float64) / 255.0
 
     if to_world:
         view_matrix_np = np.array(view_matrix).reshape(4, 4).T
@@ -112,14 +113,11 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     heightmap_pix_y = np.clip(heightmap_pix_y, 0, heightmap_size[1] - 1)
     
     # Initialize heightmaps for RGB channels and depth
-    color_heightmap = np.zeros((heightmap_size[0], heightmap_size[1], 3), dtype=np.uint8)
+    color_heightmap = np.zeros((heightmap_size[0], heightmap_size[1], 3))
     depth_heightmap = np.zeros((heightmap_size[0], heightmap_size[1]))
     
-    # Scale colors to [0, 255] and convert to uint8
-    colors_uint8 = (colors * 255).astype(np.uint8)
-    
     # Assign RGB values to heightmap
-    color_heightmap[heightmap_pix_x, heightmap_pix_y] = colors_uint8[:, :3]
+    color_heightmap[heightmap_pix_x, heightmap_pix_y] = colors[:, :3]
     
     # Assign depth values to heightmap (height from the bottom of the workspace)
     z_bottom = workspace_zlim[0]
@@ -133,14 +131,70 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     depth_heightmap = np.fliplr(depth_heightmap)
 
     # Normalize the RGB heightmap if mean and std are provided
-    if rgb_mean is not None and rgb_std is not None:
-        color_heightmap = (color_heightmap - rgb_mean) / rgb_std
-    
+    color_heightmap_normalized = (color_heightmap - rgb_mean) / rgb_std if rgb_mean is not None and rgb_std is not None else None
+
     # Normalize the depth heightmap if mean and std are provided
-    if depth_mean is not None and depth_std is not None:
-        depth_heightmap = (depth_heightmap - depth_mean) / depth_std
+    depth_heightmap_normalized = (depth_heightmap - depth_mean) / depth_std if depth_mean is not None and depth_std is not None else None
     
-    return color_heightmap, depth_heightmap
+    return color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized
+
+def collect_heightmaps_and_stats(
+    cam_target_pos, cam_distance, width, height,
+    cam_yaw, cam_pitch, cam_roll, fov, aspect,
+    near, far, workspace_xlim, workspace_ylim, workspace_zlim,
+    post_func=None, n_image=100
+):
+    color_heightmaps, depth_heightmaps = [], []
+
+    for _ in tqdm(range(n_image), desc="Collecting heightmaps"):
+        # Execute any post-processing function, if provided
+        if post_func is not None:
+            post_func()
+
+        # Capture RGB-D image from the camera
+        rgb_img, depth_img, view_matrix = capture_rgbd_image(
+            cam_target_pos=cam_target_pos,
+            cam_distance=cam_distance,
+            width=width,
+            height=height,
+            cam_yaw=cam_yaw,
+            cam_pitch=cam_pitch,
+            cam_roll=cam_roll,
+            fov=fov,
+            aspect=aspect,
+            near=near,
+            far=far
+        )
+
+        # Convert depth image to point cloud with color
+        point_cloud, colors = depth_to_point_cloud_with_color(
+            depth_img, rgb_img, fov, aspect, width, height, view_matrix, to_world=True
+        )
+
+        # Generate height maps from point cloud
+        color_heightmap, depth_heightmap, _, _ = point_cloud_to_height_map(
+            point_cloud, colors, workspace_xlim, workspace_ylim, workspace_zlim
+        )
+
+        # Append the height maps to their respective lists
+        color_heightmaps.append(color_heightmap)
+        depth_heightmaps.append(depth_heightmap)
+
+    # Convert lists to numpy arrays for mean and variance calculation
+    color_heightmaps = np.array(color_heightmaps)
+    depth_heightmaps = np.array(depth_heightmaps)
+
+    # Flatten heightmaps
+    color_heightmaps_flat = color_heightmaps.reshape(-1, 3)
+    depth_heightmaps_flat = depth_heightmaps.reshape(-1, 1)
+
+    # Calculate mean and std
+    rgb_mean = np.mean(color_heightmaps_flat, axis=0)
+    rgb_std = np.std(color_heightmaps_flat, axis=0)
+    depth_mean = np.mean(depth_heightmaps_flat, axis=0)
+    depth_std = np.std(depth_heightmaps_flat, axis=0)
+
+    return rgb_mean, rgb_std, depth_mean, depth_std
 
 ############ Visualization ############
 def initialize_visual_plots(figsize=(18, 6)):
@@ -355,9 +409,6 @@ def compute_camera_fov_at_height(cam_target_pos, cam_distance, cam_yaw, cam_pitc
 
     return xlim, ylim
 
-
-
-
 if __name__ == '__main__':
     physicsClient = p.connect(p.GUI)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -375,6 +426,25 @@ if __name__ == '__main__':
     camera_view_zlim = [0.0, cam_target_pos[2] + cam_distance]
     visualize_camera(cam_target_pos, cam_distance, cam_yaw, cam_pitch, cam_roll, fov, aspect, near, far)
     fig, axes = initialize_visual_plots()
+
+    rgb_mean, rgb_std, depth_mean, depth_std = collect_heightmaps_and_stats(
+        cam_target_pos=cam_target_pos,
+        cam_distance=cam_distance,
+        width=width,
+        height=height,
+        cam_yaw=cam_yaw,
+        cam_pitch=cam_pitch,
+        cam_roll=cam_roll,
+        fov=fov,
+        aspect=aspect,
+        near=near,
+        far=far,
+        workspace_xlim=camera_view_xlim,
+        workspace_ylim=camera_view_ylim,
+        workspace_zlim=camera_view_zlim,
+        post_func=None,
+        n_image=100
+    )
 
     # Simulation loop
     for _ in range(1000):
@@ -395,9 +465,10 @@ if __name__ == '__main__':
             width=width, height=height, view_matrix=view_matrix, to_world=True
         )
 
-        color_heightmap, depth_heightmap = point_cloud_to_height_map(
+        color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized = point_cloud_to_height_map(
             point_cloud=point_cloud, colors=colors,
-            workspace_xlim=camera_view_xlim, workspace_ylim=camera_view_ylim, workspace_zlim=camera_view_zlim)
+            workspace_xlim=camera_view_xlim, workspace_ylim=camera_view_ylim, workspace_zlim=camera_view_zlim,
+            rgb_mean=rgb_mean, rgb_std=rgb_std, depth_mean=depth_mean, depth_std=depth_std)
 
         # Update the plots
         plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap, fig, axes)

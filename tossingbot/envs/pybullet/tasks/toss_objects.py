@@ -1,4 +1,5 @@
 import random
+import pybullet as p
 
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
@@ -259,11 +260,15 @@ class TossObjects(BaseScene):
         """
         self.robot.reset()
 
-    def reset_objects(self):
+    def reset_objects(self, margin=0.1):
         """
         Randomly place objects in the workspace.
         """
-        margin = 0.1
+        # Remove existing objects if they exist
+        if hasattr(self, 'object_ids'):
+            for object_id in self.object_ids:
+                p.removeBody(object_id)
+
         self.object_ids = []
 
         assert self.objects_config['n_object'] <= 4, "Too many objects"
@@ -293,7 +298,9 @@ class TossObjects(BaseScene):
     ############### Step ###############
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
-            rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap = self.get_visual_observation()
+            rgb_img, depth_img, point_cloud, colors, \
+            color_heightmap, depth_heightmap, \
+            color_heightmap_normalized, depth_heightmap_normalized = self.get_visual_observation()
             plot_rgb_pointcloud_heightmap(
                 rgb_img=rgb_img, 
                 point_cloud=point_cloud, 
@@ -307,8 +314,10 @@ class TossObjects(BaseScene):
             )
 
     def get_observation(self):
-        rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap = self.get_visual_observation()
-    
+        rgb_img, depth_img, point_cloud, colors, \
+        color_heightmap, depth_heightmap, \
+        color_heightmap_normalized, depth_heightmap_normalized = self.get_visual_observation()
+
     def get_visual_observation(self):
         # Capture rgbd image
         rgb_img, depth_img, view_matrix = capture_rgbd_image(
@@ -336,13 +345,13 @@ class TossObjects(BaseScene):
                                                               to_world=True)
         
         # Generate height map
-        color_heightmap, depth_heightmap = point_cloud_to_height_map(point_cloud=point_cloud, 
+        color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized = point_cloud_to_height_map(point_cloud=point_cloud, 
                                                colors=colors, 
                                                workspace_xlim=self.scene_config['workspace_xlim'], 
                                                workspace_ylim=self.scene_config['workspace_ylim'], 
                                                workspace_zlim=self.scene_config['workspace_zlim'],)
         
-        return rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap
+        return rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized
 
     def get_reward(self):
         raise NotImplementedError
