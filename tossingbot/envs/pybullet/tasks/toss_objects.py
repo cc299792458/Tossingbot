@@ -90,7 +90,7 @@ class TossObjects(BaseScene):
 
         # Default objects configuration
         default_objects_config = {
-            "n_object": 3,
+            "n_object": 1,
             "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
         }
         if objects_config is not None:
