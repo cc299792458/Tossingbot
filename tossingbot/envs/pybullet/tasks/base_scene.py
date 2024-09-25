@@ -70,6 +70,7 @@ class BaseScene:
         """
         self.reset_robot()
         self.reset_objects()
+        self.reset_task()
 
         obs = self.get_observation()
         info = self.get_info()
@@ -89,6 +90,13 @@ class BaseScene:
         Should be implemented by subclasses.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
+    
+    def reset_task(self):
+        """
+        Abstract method to reset the task-related parameters in the scene.
+        Should be implemented by subclasses.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses.")
 
     ############### Step ###############
     def step(self, action):
@@ -103,7 +111,7 @@ class BaseScene:
         """
         flag = True
         while flag:
-            self.pre_simulation_step()
+            self.pre_simulation_step(action)
             self.simulation_step()
             self.post_simulation_step()
 

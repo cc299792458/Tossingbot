@@ -35,17 +35,17 @@ class BaseAgent(nn.Module):
         # Step 1: Use perception module to process the visual input and extract spatial features (mu)
         mu = self.perception_module(I)
 
-        # Step 2: Use the perception output (mu) and target position (p) to predict grasping parameters (phi_g)
-        phi_g = self.grasping_module(mu, p)
+        # Step 2: Use the perception output (mu) to predict grasping probability map (q_g)
+        q_g = self.grasping_module(mu, p)
 
-        # Step 3: Use the same perception output (mu) and target position (p) to predict throwing parameters (phi_t)
-        phi_t = self.throwing_module(mu, p)
+        # Step 3: Use the same perception output (mu) to predict throwing probability map (q_t)
+        q_t = self.throwing_module(mu, p)
 
-        return phi_g, phi_t
+        return q_g, q_t
     
     def predict(self, observation):
         I, p = observation
-        phi_g, phi_t = self.forward(I, p)
+        q_g, q_t = self.forward(I)
         
         action = None
 

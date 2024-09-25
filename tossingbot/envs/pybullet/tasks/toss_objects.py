@@ -1,4 +1,5 @@
 import random
+import numpy as np
 import pybullet as p
 
 from tossingbot.utils.misc_utils import set_seed
@@ -19,6 +20,7 @@ from tossingbot.envs.pybullet.utils.camera_utils import (
     initialize_visual_plots,
     plot_rgb_pointcloud_heightmap,
     compute_camera_fov_at_height,
+    collect_heightmaps_and_stats,
 )
 
 class TossObjects(BaseScene):
@@ -72,7 +74,7 @@ class TossObjects(BaseScene):
                             default_scene_config['workspace_position'][0] + default_scene_config['workspace_length'] / 2],
             "workspace_ylim": [default_scene_config['workspace_position'][1] - default_scene_config['workspace_width'] / 2, 
                             default_scene_config['workspace_position'][1] + default_scene_config['workspace_width'] / 2],
-            "workspace_zlim": [0.01, 0.4]
+            "workspace_zlim": [0.0, 0.4]
         })
         if scene_config is not None:
             default_scene_config.update(scene_config)
@@ -131,6 +133,31 @@ class TossObjects(BaseScene):
         self.camera_config = default_camera_config
 
         super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
+
+        # Collect heightmap dataset and calculate stats
+        rgb_mean, rgb_std, depth_mean, depth_std = collect_heightmaps_and_stats(
+            cam_target_pos=self.camera_config['cam_target_pos'],
+            cam_distance=self.camera_config['cam_distance'],
+            width=self.camera_config['width'],
+            height=self.camera_config['height'],
+            cam_yaw=self.camera_config['cam_yaw'],
+            cam_pitch=self.camera_config['cam_pitch'],
+            cam_roll=self.camera_config['cam_roll'],
+            fov=self.camera_config['fov'],
+            aspect=self.camera_config['aspect'],
+            near=self.camera_config['near'],
+            far=self.camera_config['far'],
+            workspace_xlim=self.camera_config['cam_view_xlim'],
+            workspace_ylim=self.camera_config['cam_view_ylim'],
+            workspace_zlim=self.scene_config['workspace_zlim'],
+            post_func=self.reset_objects
+        )
+        self.heightmap_stats = {
+            "rgb_mean": rgb_mean,
+            "rgb_std": rgb_std,
+            "depth_mean": depth_mean,
+            "depth_std": depth_std, 
+        }
 
         if use_gui and self.visualize_config['visualize_camera']:
             visualize_camera(
@@ -289,6 +316,7 @@ class TossObjects(BaseScene):
 
         assert self.objects_config['n_object'] <= 3, "Too many objects"
 
+        z = 0.02
         for i in range(self.objects_config['n_object']):
             object_type = i
             # object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
@@ -301,21 +329,28 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
             if self.objects_config['object_types'][object_type] == 'sphere':
-                object_id = create_sphere(radius=0.02, position=[x, y, 0.05], color=[1, 0, 0, 1])
+                object_id = create_sphere(radius=0.02, position=[x, y, z], color=[1, 0, 0, 1])
             elif self.objects_config['object_types'][object_type] == 'box':
-                object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=[x, y, 0.05], color=[0, 1, 0, 1])
+                object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=[x, y, z], color=[0, 1, 0, 1])
             elif self.objects_config['object_types'][object_type] == 'cylindar':
-                object_id = create_cylinder(radius=0.02, height=0.02, position=[x, y, 0.05], color=[0, 0, 1, 1])
+                object_id = create_cylinder(radius=0.02, height=0.02, position=[x, y, z], color=[0, 0, 1, 1])
             elif self.objects_config['object_types'][object_type] == 'capsule':
-                object_id = create_capsule(radius=0.02, height=0.02, position=[x, y, 0.05], color=random_color())
+                object_id = create_capsule(radius=0.02, height=0.02, position=[x, y, z], color=random_color())
             
             self.object_ids.append(object_id)
+        
+        # # Perform simulation steps for 0.1 second to stabilize the scene
+        # for _ in range(int(1 / (10 * self.timestep))):
+        #     self.simulation_step()
+
+        return None
+
+    def reset_task(self):
+        self.select_target()
 
     ############### Step ###############
-    def pre_simulation_step(self):
-        self.select_target()
-        if self.use_gui and self.visualize_config['visualize_target']:
-            self.visualize_target()
+    def pre_simulation_step(self, action):
+        pass
 
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
@@ -362,10 +397,20 @@ class TossObjects(BaseScene):
             height
         ]
 
+        if self.use_gui and self.visualize_config['visualize_target']:
+            self.visualize_target()
+
     def get_observation(self):
         rgb_img, depth_img, point_cloud, colors, \
         color_heightmap, depth_heightmap, \
         color_heightmap_normalized, depth_heightmap_normalized = self.get_visual_observation()
+
+        I = np.concatenate((color_heightmap_normalized, \
+                    depth_heightmap_normalized[..., np.newaxis]), \
+                   axis=-1) if color_heightmap_normalized is not None \
+                   or depth_heightmap_normalized is not None else None
+
+        return (I, self.target_position)
 
     def get_visual_observation(self):
         # Capture rgbd image
@@ -398,7 +443,11 @@ class TossObjects(BaseScene):
                                                colors=colors, 
                                                workspace_xlim=self.scene_config['workspace_xlim'], 
                                                workspace_ylim=self.scene_config['workspace_ylim'], 
-                                               workspace_zlim=self.scene_config['workspace_zlim'],)
+                                               workspace_zlim=self.scene_config['workspace_zlim'],
+                                               rgb_mean=self.heightmap_stats['rgb_mean'] if hasattr(self, 'heightmap_stats') else None,
+                                               rgb_std=self.heightmap_stats['rgb_std'] if hasattr(self, 'heightmap_stats') else None,
+                                               depth_mean=self.heightmap_stats['depth_mean'] if hasattr(self, 'heightmap_stats') else None,
+                                               depth_std=self.heightmap_stats['depth_std'] if hasattr(self, 'heightmap_stats') else None,)
         
         return rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized
 
@@ -440,7 +489,7 @@ class TossObjects(BaseScene):
         for i in range(len(corners)):
             start_point = corners[i]
             end_point = corners[(i + 1) % len(corners)]
-            debug_line_id = p.addUserDebugLine(start_point, end_point, lineColorRGB=[1, 0, 0], lineWidth=4)
+            debug_line_id = p.addUserDebugLine(start_point, end_point, lineColorRGB=[1, 0, 0], lineWidth=3)
             self.target_visualization_ids.append(debug_line_id)
 
 if __name__ == '__main__':
