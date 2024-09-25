@@ -42,3 +42,11 @@ class BaseAgent(nn.Module):
         phi_t = self.throwing_module(mu, p)
 
         return phi_g, phi_t
+    
+    def predict(self, observation):
+        I, p = observation
+        phi_g, phi_t = self.forward(I, p)
+        
+        action = None
+
+        return action

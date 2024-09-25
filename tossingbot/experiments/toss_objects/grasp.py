@@ -17,5 +17,7 @@ if __name__ == '__main__':
     agent = BaseAgent(perception_module=perception_module, grasping_module=grasping_module, throwing_module=throwing_module)
 
     # Main loop
+    obs, info = env.reset()
     while True:
-        env.step()
+        action = agent.predict(obs)
+        env.step(action=action)

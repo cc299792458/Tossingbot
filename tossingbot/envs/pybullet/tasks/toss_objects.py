@@ -50,6 +50,7 @@ class TossObjects(BaseScene):
             "visualize_coordinate_frames": True,
             "visualize_camera": True,
             "visualize_visual_plots": True,
+            "visualize_target": True,
         }
         if visualize_config is not None:
             default_visualize_config.update(visualize_config)
@@ -311,6 +312,11 @@ class TossObjects(BaseScene):
             self.object_ids.append(object_id)
 
     ############### Step ###############
+    def pre_simulation_step(self):
+        self.select_target()
+        if self.use_gui and self.visualize_config['visualize_target']:
+            self.visualize_target()
+
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
             rgb_img, depth_img, point_cloud, colors, \
@@ -325,8 +331,36 @@ class TossObjects(BaseScene):
                 axes=self.visual_plot_axes,
                 xlim=self.camera_config['cam_view_xlim'],
                 ylim=self.camera_config['cam_view_ylim'],
-                zlim=self.camera_config['workspace_zlim'],
+                zlim=self.scene_config['workspace_zlim'],
             )
+
+    def select_target(self):
+        # Get scene configuration
+        rows = self.scene_config['box_n_rows']
+        cols = self.scene_config['box_n_cols']
+        n_boxes = rows * cols
+
+        # Randomly select a target box
+        target_box = random.randint(0, n_boxes - 1)
+        target_row = target_box // cols
+        target_col = target_box % cols
+
+        # Get box dimensions and position
+        length = self.scene_config['box_length']
+        width = self.scene_config['box_width']
+        height = self.scene_config['box_height']
+        central_position = self.scene_config['box_position']
+
+        # Calculate the offset for the selected box
+        row_offset = target_row - (rows - 1) / 2
+        col_offset = target_col - (cols - 1) / 2
+
+        # Set target position
+        self.target_position = [
+            central_position[0] + row_offset * length,
+            central_position[1] + col_offset * width,
+            height
+        ]
 
     def get_observation(self):
         rgb_img, depth_img, point_cloud, colors, \
@@ -381,7 +415,33 @@ class TossObjects(BaseScene):
         return {}
     
     ############### Visulization ###############
+    def visualize_target(self):
+        if not hasattr(self, 'target_position'):
+            raise ValueError("Not set a target yet")
+        
+        if hasattr(self, 'target_visualization_ids'):
+            for vis_id in self.target_visualization_ids:
+                p.removeUserDebugItem(vis_id)
+        else:
+            self.target_visualization_ids = []
 
+        # Get box dimensions and position
+        length = self.scene_config['box_length']
+        width = self.scene_config['box_width']
+
+        corners = [
+            [self.target_position[0] - length / 2, self.target_position[1] - width / 2, self.target_position[2]],
+            [self.target_position[0] - length / 2, self.target_position[1] + width / 2, self.target_position[2]],
+            [self.target_position[0] + length / 2, self.target_position[1] + width / 2, self.target_position[2]],
+            [self.target_position[0] + length / 2, self.target_position[1] - width / 2, self.target_position[2]],
+        ]
+
+        # Add debugger lines
+        for i in range(len(corners)):
+            start_point = corners[i]
+            end_point = corners[(i + 1) % len(corners)]
+            debug_line_id = p.addUserDebugLine(start_point, end_point, lineColorRGB=[1, 0, 0], lineWidth=4)
+            self.target_visualization_ids.append(debug_line_id)
 
 if __name__ == '__main__':
     set_seed()

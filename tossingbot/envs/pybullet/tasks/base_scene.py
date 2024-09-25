@@ -72,6 +72,9 @@ class BaseScene:
         self.reset_objects()
 
         obs = self.get_observation()
+        info = self.get_info()
+
+        return obs, info
 
     def reset_robot(self):
         """
