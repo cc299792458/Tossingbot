@@ -462,7 +462,16 @@ class TossObjects(BaseScene):
 
     def get_info(self):
         return {}
-    
+
+    def get_object_pose(self, object_id):
+        if object_id in self.object_ids:
+            position, orientation = p.getBasePositionAndOrientation(object_id)
+            pose = (position, orientation)
+        else:
+            pose = None
+
+        return pose
+
     ############### Visulization ###############
     def visualize_target(self):
         if not hasattr(self, 'target_position'):

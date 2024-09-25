@@ -60,7 +60,7 @@ class GraspingModule(nn.Module):
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.rb3 = ResidualBlock(128, 64)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        self.conv_final = nn.Conv2d(64, 2, kernel_size=1)
+        self.conv_final = nn.Conv2d(64, 1, kernel_size=1)   # NOTE: the paper says that it uses 2 channels here
 
     def forward(self, x):
         x = self.rb1(x)
