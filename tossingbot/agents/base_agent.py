@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 from tossingbot.utils.pytorch_utils import np_image_to_tensor, tensor_to_np_image
 from tossingbot.envs.pybullet.utils.math_utils import rotate_image_array, rotate_image_tensor
@@ -55,6 +56,7 @@ class BaseAgent(nn.Module):
     def predict(self, observation, n_rotation=16):
         I, p = observation
         grasp_logits = []  # Store network raw outputs (logits) for each rotation
+        depth_heightmap_rotateds = []    # Store the rotated depth heightmap for visualization
 
         # Convert the input image to tensor once
         I_tensor = np_image_to_tensor(I, self.device)
@@ -65,6 +67,9 @@ class BaseAgent(nn.Module):
 
             # Rotate the input tensor
             I_rotated = rotate_image_tensor(I_tensor, theta=theta)
+
+            # Store the rotated heightmap(only depthmap)
+            depth_heightmap_rotateds.append(I_rotated[0, -1, :, :].detach().cpu().numpy())
 
             # Forward pass through the network
             q_g_tensor, q_t_tensor = self.forward(I_rotated)
@@ -87,11 +92,48 @@ class BaseAgent(nn.Module):
         # Find the index of the maximum value across the entire (n_rotation, H, W) array
         grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
 
-        return (grasp_pixel_index, None)
+        return (grasp_pixel_index, None), depth_heightmap_rotateds
+
+def draw_arrow_on_last_channel(heightmap, start, end):
+    """
+    Modify the last channel of the heightmap to include an arrow shape.
+
+    Args:
+        heightmap (ndarray): Heightmap with shape (H, W, C) where the last channel is modified.
+        start (tuple): Starting point (x, y) of the arrow.
+        end (tuple): End point (x, y) of the arrow.
+    """
+    # Get heightmap dimensions
+    H, W, C = heightmap.shape
+
+    # Calculate the vector components for the arrow (direction from start to end)
+    arrow_length = max(abs(end[0] - start[0]), abs(end[1] - start[1]))
+    dx = (end[0] - start[0]) / arrow_length
+    dy = (end[1] - start[1]) / arrow_length
+
+    # Draw the arrow on the last channel (increment values along the arrow's path)
+    for i in range(int(arrow_length)):
+        x = int(start[0] + i * dx)
+        y = int(start[1] + i * dy)
+        if 0 <= x < W and 0 <= y < H:
+            heightmap[y, x, -1] = 1  # Modify the last channel to mark the arrow path
+
+    # Mark the arrowhead (using a simple cross to denote the arrowhead)
+    if 0 <= end[0] < W and 0 <= end[1] < H:
+        heightmap[end[1], end[0], -1] = 2  # Arrowhead is a stronger mark
+        if end[1] + 1 < H: heightmap[end[1] + 1, end[0], -1] = 2
+        if end[1] - 1 >= 0: heightmap[end[1] - 1, end[0], -1] = 2
+        if end[0] + 1 < W: heightmap[end[1], end[0] + 1, -1] = 2
+        if end[0] - 1 >= 0: heightmap[end[1], end[0] - 1, -1] = 2
+
+    return heightmap
 
 if __name__ == '__main__':
     # Initialize input data
-    heightmap = np.zeros([60, 80, 4])  # 60x80 heightmap with 4 channels
+    heightmap = np.zeros([80, 60, 4])  # 80x60 heightmap with 4 channels
+    start_point = (10, 20)  # Starting point of the arrow
+    end_point = (50, 60)  # End point of the arrow
+    heightmap = draw_arrow_on_last_channel(heightmap, start=start_point, end=end_point)
     target_position = np.array([2.0, 0.0, 0.1])  # Target position in (x, y, z)
 
     # Initialize modules and agent
@@ -107,4 +149,5 @@ if __name__ == '__main__':
 
     # Make prediction with observation
     observation = (heightmap, target_position)
-    agent.predict(observation=observation)
+    action, depth_heightmap_rotateds = agent.predict(observation=observation)
+    plot_heightmaps(depth_heightmap_rotateds)

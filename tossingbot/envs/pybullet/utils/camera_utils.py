@@ -142,7 +142,7 @@ def collect_heightmaps_and_stats(
 ):
     color_heightmaps, depth_heightmaps = [], []
 
-    for _ in tqdm(range(n_image), desc="Collecting heightmaps"):
+    for _ in tqdm(range(n_image), desc="Collecting heightmaps for normalization"):
         # Execute any post-processing function, if provided
         if post_func is not None:
             post_func()
@@ -263,6 +263,50 @@ def plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap,
     # Redraw the figure
     plt.draw()
     plt.pause(0.001)
+
+def plot_heightmaps(heightmaps, max_cols=4, title="Heightmaps Overview"):
+    """
+    Plot multiple heightmaps in a grid of subplots, adjusting the layout automatically.
+
+    Args:
+        heightmaps (list of ndarray): List of depth heightmaps to be displayed.
+        max_cols (int): Maximum number of columns for the plot grid.
+        title (str): The overall title of the plot.
+    """
+    num_heightmaps = len(heightmaps)
+
+    # Determine the number of rows and columns
+    cols = min(max_cols, num_heightmaps)  # Set the number of columns (up to max_cols)
+    rows = math.ceil(num_heightmaps / cols)  # Calculate the required number of rows
+
+    # Create a figure with the calculated number of rows and columns
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
+
+    # Flatten the axes array if necessary (for easy iteration)
+    axes = np.array(axes).flatten() if rows > 1 or cols > 1 else [axes]
+
+    # Iterate over each heightmap and its corresponding axis
+    for i, heightmap in enumerate(heightmaps):
+        ax = axes[i]
+        depth_img = ax.imshow(heightmap, cmap='viridis')
+        ax.set_title(f"Heightmap {i + 1}")
+        ax.axis('off')  # Turn off the axis labels
+
+        # Add colorbar for each heightmap
+        fig.colorbar(depth_img, ax=ax)
+
+    # Turn off any unused axes
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
+
+    # Add an overall title
+    plt.suptitle(title, fontsize=16)
+
+    # Adjust layout to make it more compact but keep some space for the title
+    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the plot to make room for the title
+
+    # Display the plot
+    plt.show()
 
 def draw_camera_frustum(camera_pos, camera_orientation, fov, aspect, near, far):
     """

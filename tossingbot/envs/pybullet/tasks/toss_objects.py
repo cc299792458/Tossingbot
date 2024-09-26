@@ -560,4 +560,4 @@ if __name__ == '__main__':
     env = TossObjects()
     #####----- Main Loop -----#####
     while True:
-        env.step(action=None)
+        env.step(action=(None, None))
