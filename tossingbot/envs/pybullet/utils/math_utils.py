@@ -1,4 +1,7 @@
+import torch
 import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
 
 def slerp(q0, q1, t_array):
     # Ensure inputs are unit quaternions
@@ -155,3 +158,48 @@ def rotate_image_array(image_array, theta):
 
     # Remove padding from the result
     return rotated_image[padding_height:-padding_height, padding_width:-padding_width]
+
+def rotate_image_tensor(image_tensor, theta):
+    """
+    Rotate a 4D image tensor (B, C, H, W) by a specified angle.
+
+    Parameters:
+        image_tensor (torch.Tensor): The input 4D tensor of shape (B, C, H, W).
+        theta (float): The angle in degrees to rotate the image.
+
+    Returns:
+        rotated_tensor: The rotated 4D tensor of shape (B, C, H, W).
+    """
+    B, C, H, W = image_tensor.shape
+    
+    # Calculate diagonal length to determine padding
+    diag_length = np.sqrt(H**2 + W**2)
+    
+    # Padding size to avoid cutting off the image after rotation
+    padding_height = int((diag_length - H) / 2)
+    padding_width = int((diag_length - W) / 2)
+    
+    new_height, new_width = H + 2 * padding_height, W + 2 * padding_width
+    
+    # Pad the image to ensure that it doesn't get cropped after rotation
+    padded_image_tensor = F.pad(image_tensor, 
+                                (padding_width, padding_width, padding_height, padding_height), 
+                                mode='constant', value=0)
+    
+    # Calculate the rotation matrix
+    theta_rad = np.radians(theta)
+    rotation_matrix = torch.tensor([[np.cos(-theta_rad), -np.sin(-theta_rad), 0],
+                                    [np.sin(-theta_rad), np.cos(-theta_rad), 0]], dtype=torch.float32)
+    
+    # Generate the affine grid for the rotation
+    affine_grid = F.affine_grid(rotation_matrix.unsqueeze(0).repeat(B, 1, 1).to(image_tensor.device),
+                                [B, C, new_height, new_width],
+                                align_corners=False)
+    
+    # Apply the grid sample to rotate the image
+    rotated_tensor = F.grid_sample(padded_image_tensor, affine_grid, mode='nearest', align_corners=False)
+    
+    # Remove the padding to bring the tensor back to its original size
+    rotated_tensor = rotated_tensor[:, :, padding_height:-padding_height, padding_width:-padding_width]
+    
+    return rotated_tensor

@@ -85,6 +85,7 @@ class TossObjects(BaseScene):
             "base_position": [0.0, 0.0, 0.0],
             "base_orientation": [0.0, 0.0, 0.0],
             "robot_type": 'panda',
+            "post_grasp_pose": ([0.3, 0.0, 0.4], [1.0, 0.0, 0.0, 0.0]),   # NOTE: This can be given by the agent in a more complex setting
             "visualize_coordinate_frames": use_gui and self.visualize_config['visualize_coordinate_frames'],
         }
         if robot_config is not None:
@@ -346,10 +347,15 @@ class TossObjects(BaseScene):
         return None
 
     def reset_task(self):
-        self.select_target()
+        self.select_target_box()
+        self.grasp_success = False
+        self.grasped_object_id = None
+        self.throw_success = False
 
     ############### Step ###############
     def pre_simulation_step(self, action):
+        phi_g = None    # phi_g = (x, y, z, theta), represents the grasping position and yaw orientation
+        phi_t = None    # phi_t = (rx, ry, rz, vx, vy, vz), represents the throwing position and throwing velocity
         pass
 
     def post_simulation_step(self):
@@ -369,7 +375,7 @@ class TossObjects(BaseScene):
                 zlim=self.scene_config['workspace_zlim'],
             )
 
-    def select_target(self):
+    def select_target_box(self):
         # Get scene configuration
         rows = self.scene_config['box_n_rows']
         cols = self.scene_config['box_n_cols']
@@ -452,16 +458,50 @@ class TossObjects(BaseScene):
         return rgb_img, depth_img, point_cloud, colors, color_heightmap, depth_heightmap, color_heightmap_normalized, depth_heightmap_normalized
 
     def get_reward(self):
+        # NOTE: for self-supervised learning, return label here
         raise NotImplementedError
+    
+    def get_label(self, best_grasp_pix_id):
+        # TODO: labelling throwing
+        length, width = self.camera_config['length'], self.camera_config['width']
+        grasp_label, throw_label = np.ones([length, width]), np.zeros([length, width])
+        if self.grasp_success:
+            grasp_label[best_grasp_pix_id[0], best_grasp_pix_id[0]] = 0
+
+        return grasp_label, throw_label
+
 
     def is_terminated(self):
         raise NotImplementedError
 
     def is_truncated(self):
         raise NotImplementedError
-
+    
     def get_info(self):
-        return {}
+        return {
+            "grasp_success": self.grasp_success,
+            "object_id": self.grasped_object_id,
+            "throw_success": self.throw_success,
+        }
+        
+    def is_grasp_success(self):
+        grasp_success = not self.robot._is_gripper_closed()
+        if grasp_success:
+            post_grasp_height = self.robot_config['post_grasp_pose'][0][2]
+            object_ids = [
+                object_id for object_id in self.object_ids 
+                if self.get_object_pose(object_id)[2] > post_grasp_height - 0.1
+            ]
+            assert len(object_ids) == 1, "There should be exactly 1 object grasped."
+            object_id = object_ids[0]  # Extract the single object ID
+        else:
+            object_id = None
+
+        self.grasp_success = grasp_success
+        self.grasped_object_id = object_id
+
+    def is_throw_success(self):
+        self.throw_success = self.is_object_in_target_box(object_id=self.grasped_object_id)
 
     def get_object_pose(self, object_id):
         if object_id in self.object_ids:
@@ -471,6 +511,19 @@ class TossObjects(BaseScene):
             pose = None
 
         return pose
+    
+    def is_object_in_target_box(self, object_id):
+        object_pos = self.get_object_pose(object_id=object_id)[0]
+        box_length = self.scene_config['box_length']
+        box_width = self.scene_config['box_width']
+        
+        target_x, target_y = self.target_position[0], self.target_position[1]
+        
+        # Check if object is within the target box
+        in_x_range = target_x - box_length / 2 < object_pos[0] < target_x + box_length / 2
+        in_y_range = target_y - box_width / 2 < object_pos[1] < target_y + box_width / 2
+        
+        return in_x_range and in_y_range
 
     ############### Visulization ###############
     def visualize_target(self):
