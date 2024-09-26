@@ -87,8 +87,8 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     # Compute heightmap size based on workspace limits and resolution
     # Desired order: (x_size, y_size)
     heightmap_size = np.round((
-        (workspace_xlim[1] - workspace_xlim[0]) / heightmap_resolution,  # x dimension
-        (workspace_ylim[1] - workspace_ylim[0]) / heightmap_resolution   # y dimension
+        (workspace_ylim[1] - workspace_ylim[0]) / heightmap_resolution,     # n rows
+        (workspace_xlim[1] - workspace_xlim[0]) / heightmap_resolution,     # n cols
     )).astype(int)
     
     # Sort point cloud by z (height)
@@ -104,31 +104,27 @@ def point_cloud_to_height_map(point_cloud, colors, workspace_xlim, workspace_yli
     )
     point_cloud, colors = point_cloud[valid_mask], colors[valid_mask]
     
-    # Project points to heightmap pixel coordinates
-    heightmap_pix_x = np.floor((point_cloud[:, 0] - workspace_xlim[0]) / heightmap_resolution).astype(int)
-    heightmap_pix_y = np.floor((point_cloud[:, 1] - workspace_ylim[0]) / heightmap_resolution).astype(int)
+    # Project points to heightmap pixel coordinates, the top-left corner is the origin
+    heightmap_pix_v = np.floor((workspace_ylim[1] - point_cloud[:, 1]) / heightmap_resolution).astype(int)  # row index
+    heightmap_pix_u = np.floor((point_cloud[:, 0] - workspace_xlim[0]) / heightmap_resolution).astype(int)  # col index
     
     # Clip the indices to ensure they are within bounds
-    heightmap_pix_x = np.clip(heightmap_pix_x, 0, heightmap_size[0] - 1)
-    heightmap_pix_y = np.clip(heightmap_pix_y, 0, heightmap_size[1] - 1)
+    heightmap_pix_v = np.clip(heightmap_pix_v, 0, heightmap_size[0] - 1)
+    heightmap_pix_u = np.clip(heightmap_pix_u, 0, heightmap_size[1] - 1)
     
     # Initialize heightmaps for RGB channels and depth
     color_heightmap = np.zeros((heightmap_size[0], heightmap_size[1], 3))
     depth_heightmap = np.zeros((heightmap_size[0], heightmap_size[1]))
     
     # Assign RGB values to heightmap
-    color_heightmap[heightmap_pix_x, heightmap_pix_y] = colors[:, :3]
+    color_heightmap[heightmap_pix_v, heightmap_pix_u] = colors[:, :3]
     
     # Assign depth values to heightmap (height from the bottom of the workspace)
     z_bottom = workspace_zlim[0]
-    depth_heightmap[heightmap_pix_x, heightmap_pix_y] = point_cloud[:, 2] - z_bottom
+    depth_heightmap[heightmap_pix_v, heightmap_pix_u] = point_cloud[:, 2] - z_bottom
     
     # Remove invalid depth values (set as 0 or NaN)
     depth_heightmap[depth_heightmap < 0] = 0
-
-    # Flip heightmaps left-right
-    color_heightmap = np.fliplr(color_heightmap)
-    depth_heightmap = np.fliplr(depth_heightmap)
 
     # Normalize the RGB heightmap if mean and std are provided
     color_heightmap_normalized = (color_heightmap - rgb_mean) / rgb_std if rgb_mean is not None and rgb_std is not None else None
@@ -471,10 +467,10 @@ if __name__ == '__main__':
             rgb_mean=rgb_mean, rgb_std=rgb_std, depth_mean=depth_mean, depth_std=depth_std)
 
         # Rotate the depth heightmap for example
-        rotated_depth_heightmap = rotate_image_array(depth_heightmap, theta=180)
+        rotated_depth_heightmap = rotate_image_array(depth_heightmap, theta=30)
 
         # Update the plots
-        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, rotated_depth_heightmap, fig, axes)
+        plot_rgb_pointcloud_heightmap(rgb_img, point_cloud, colors, depth_heightmap_normalized, fig, axes)
 
     # Disconnect the PyBullet simulation
     p.disconnect()

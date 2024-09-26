@@ -354,6 +354,7 @@ class TossObjects(BaseScene):
 
     ############### Step ###############
     def pre_simulation_step(self, action):
+        grasp_pixel_index, throw_velocity = action
         phi_g = None    # phi_g = (x, y, z, theta), represents the grasping position and yaw orientation
         phi_t = None    # phi_t = (rx, ry, rz, vx, vy, vz), represents the throwing position and throwing velocity
         pass
