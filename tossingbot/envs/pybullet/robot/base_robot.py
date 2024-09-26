@@ -510,7 +510,7 @@ class BaseRobot:
         # Stage 3: Decelerate the arm by reducing velocity to zero
         elif self._throw_step == 2:
             self.set_arm_joint_velocity_target(np.zeros([self.num_arm_dofs]))
-            joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+            joint_velocities = self.get_arm_joint_velocity()
             if all(abs(vel) < 0.01 for vel in joint_velocities):
                 del self._throw_step
                 del self._open_threshold

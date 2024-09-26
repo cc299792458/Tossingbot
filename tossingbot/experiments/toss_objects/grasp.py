@@ -24,7 +24,7 @@ if __name__ == '__main__':
     throwing_module = ThrowingModule()
 
     # Agent
-    agent = BaseAgent(perception_module=perception_module, grasping_module=grasping_module, throwing_module=throwing_module, device=device)
+    agent = BaseAgent(device=device, perception_module=perception_module, grasping_module=grasping_module, throwing_module=throwing_module)
 
     # Main loop
     obs, info = env.reset()

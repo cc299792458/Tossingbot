@@ -9,7 +9,14 @@ from tossingbot.utils.pytorch_utils import np_image_to_tensor, tensor_to_np_imag
 from tossingbot.envs.pybullet.utils.math_utils import rotate_image_array, rotate_image_tensor
 
 class BaseAgent(nn.Module):
-    def __init__(self, perception_module: nn.Module, grasping_module: nn.Module, throwing_module: nn.Module, device: torch.device):
+    def __init__(
+            self, 
+            device: torch.device, 
+            perception_module: nn.Module, 
+            grasping_module: nn.Module, 
+            throwing_module: nn.Module, 
+            epsilons: list[float] = [0.5, 0.1]
+        ):
         """
         Initialize the BaseAgent for TossingBot.
         
@@ -17,20 +24,25 @@ class BaseAgent(nn.Module):
         and target positions by utilizing separate modules for perception, grasping, and throwing.
         
         Args:
+            device (torch.device): The device to run computations on (e.g., 'cpu' or 'cuda').
             perception_module (nn.Module): Neural network module for perception, processes visual input I.
             grasping_module (nn.Module): Neural network module for predicting grasping parameters.
             throwing_module (nn.Module): Neural network module for predicting throwing parameters.
-            device (torch.device): The device to run computations on (e.g., 'cpu' or 'cuda').
+            epsilons (list[float]): Epsilon used for epsilon-greedy.
         """
         super(BaseAgent, self).__init__()
         
         # Assign the device
         self.device = device
 
+        # Assign the epsilons
+        self.epsilons = epsilons
+
         # Assign the modules
         self.perception_module = perception_module.to(self.device)
         self.grasping_module = grasping_module.to(self.device)
         self.throwing_module = throwing_module.to(self.device)
+
 
     def forward(self, I):
         """
@@ -143,10 +155,10 @@ if __name__ == '__main__':
     grasp_module = GraspingModule()
     throw_module = ThrowingModule()
     agent = BaseAgent(
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
         perception_module=perception_module,
         grasping_module=grasp_module,
         throwing_module=throw_module,
-        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     )
 
     # Make prediction with observation

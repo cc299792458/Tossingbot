@@ -61,7 +61,7 @@ class TossObjects(BaseScene):
         default_scene_config = {
             "workspace_length": 0.3,
             "workspace_width": 0.4,
-            "workspace_position": [0.3, 0],
+            "workspace_position": [0.4, 0],
             "box_length": 0.25,
             "box_width": 0.15,
             "box_height": 0.1,
@@ -358,10 +358,10 @@ class TossObjects(BaseScene):
 
     ############### Step ###############
     def pre_simulation_process(self, action):
-        grasp_pixel_index, throw_velocity = action
+        self.grasp_pixel_index, throw_velocity = action
 
         # Unpack the grasp pixel index
-        yaw_index, pixel_y, pixel_x = grasp_pixel_index
+        yaw_index, pixel_y, pixel_x = self.grasp_pixel_index
 
         # Calculate the yaw angle in radians based on the rotation index
         yaw = np.radians(yaw_index * 360 / self.camera_config['n_rotations'])
@@ -376,18 +376,18 @@ class TossObjects(BaseScene):
         # Define the grasp pose (position and yaw orientation)
         self.grasp_pose = ([grasp_x, grasp_y, grasp_z], [1.0, 0.0, 0.0, 0.0])  # Grasp pose with quaternion representation
 
-        self.throw_pose = None
+        self.throw_pose = ([0.4, 0.0, 0.4], [1.0, 0.0, 0.0, 0.0])
 
-        self.throw_velocity = throw_velocity
+        self.throw_velocity = ([2.0, 0.0, 0.0], [0.0, 0.0, 0.0])
 
     def post_simulation_process(self, action_completed):
-        if action_completed and self.is_workspace_empty():
+        if action_completed and self.does_workspace_need_reset():
             self.reset_objects()
 
         self.grasp_completed = False
         self.throw_completed = False
 
-    def is_workspace_empty(self):
+    def does_workspace_need_reset(self):
         for object_id in self.object_ids:
             if self.is_object_in_workspace(object_id=object_id):
                 return False
@@ -397,12 +397,15 @@ class TossObjects(BaseScene):
         is_action_finished = False
         if not self.grasp_completed:
             self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.robot_config['post_grasp_pose'])
+            if self.grasp_completed:
+                self.check_grasp_success()
         elif not self.grasp_success:
             is_action_finished = True
         elif not self.throw_completed:
             self.throw_completed = self.robot.throw(tcp_target_pose=self.throw_pose, tcp_target_velocity=self.throw_velocity)
-        else:
-            is_action_finished
+            if self.throw_completed:
+                self.check_throw_success()
+                is_action_finished = True
 
         return is_action_finished
 
@@ -519,14 +522,14 @@ class TossObjects(BaseScene):
 
     def get_reward(self):
         # NOTE: for self-supervised learning, return label here
-        return None
+        return self.get_label()
     
-    def get_label(self, best_grasp_pix_id):
+    def get_label(self):
         # TODO: labelling throwing
-        length, width = self.camera_config['length'], self.camera_config['width']
+        length, width = self.visual_observation['depth_heightmap'].shape
         grasp_label, throw_label = np.ones([length, width]), np.zeros([length, width])
         if self.grasp_success:
-            grasp_label[best_grasp_pix_id[0], best_grasp_pix_id[0]] = 0
+            grasp_label[self.grasp_pixel_index[1], self.grasp_pixel_index[2]] = 0
 
         return grasp_label, throw_label
 
@@ -543,13 +546,13 @@ class TossObjects(BaseScene):
             "throw_success": self.throw_success,
         }
         
-    def is_grasp_success(self):
+    def check_grasp_success(self):
         grasp_success = not self.robot._is_gripper_closed()
         if grasp_success:
             post_grasp_height = self.robot_config['post_grasp_pose'][0][2]
             object_ids = [
                 object_id for object_id in self.object_ids 
-                if self.get_object_pose(object_id)[2] > post_grasp_height - 0.1
+                if self.get_object_pose(object_id)[0][2] > post_grasp_height - 0.1
             ]
             assert len(object_ids) == 1, "There should be exactly 1 object grasped."
             object_id = object_ids[0]  # Extract the single object ID
@@ -559,7 +562,7 @@ class TossObjects(BaseScene):
         self.grasp_success = grasp_success
         self.grasped_object_id = object_id
 
-    def is_throw_success(self):
+    def check_throw_success(self):
         self.throw_success = self.is_object_in_target_box(object_id=self.grasped_object_id)
 
     def get_object_pose(self, object_id):
@@ -571,14 +574,14 @@ class TossObjects(BaseScene):
 
         return pose
     
-    def is_object_in_workspace(self, object_id):
+    def is_object_in_workspace(self, object_id, margin=0.1):
         object_pos = self.get_object_pose(object_id=object_id)[0]
         workspace_xlim = self.scene_config['workspace_xlim']
         workspace_ylim = self.scene_config['workspace_ylim']
         
         # Check if object is within the target box
-        in_x_range = workspace_xlim[0] < object_pos[0] < workspace_xlim[1]
-        in_y_range = workspace_ylim[0] < object_pos[1] < workspace_ylim[1]
+        in_x_range = workspace_xlim[0] + margin < object_pos[0] < workspace_xlim[1] - margin
+        in_y_range = workspace_ylim[0] + margin < object_pos[1] < workspace_ylim[1] - margin
         
         return in_x_range and in_y_range
     
