@@ -114,6 +114,8 @@ class TossObjects(BaseScene):
             "aspect": 1.33,
             "near": 0.01,
             "far": 10.0,
+            "heightmap_resolution": 0.005,
+            "n_rotations": 16,
         }
         if camera_config is not None:
             default_camera_config.update(camera_config)
@@ -353,11 +355,24 @@ class TossObjects(BaseScene):
         self.throw_success = False
 
     ############### Step ###############
-    def pre_simulation_step(self, action):
+    def pre_simulation_process(self, action):
         grasp_pixel_index, throw_velocity = action
-        phi_g = None    # phi_g = (x, y, z, theta), represents the grasping position and yaw orientation
-        phi_t = None    # phi_t = (rx, ry, rz, vx, vy, vz), represents the throwing position and throwing velocity
-        pass
+
+        # Unpack the grasp pixel index
+        yaw_index, pixel_y, pixel_x = grasp_pixel_index
+
+        # Calculate the yaw angle in radians based on the rotation index
+        yaw = np.radians(yaw_index * 360 / self.camera_config['n_rotations'])
+
+        # Compute the grasp position in the workspace
+        grasp_x = self.scene_config['workspace_xlim'][0] + pixel_x * self.camera_config['heightmap_resolution']
+        grasp_y = self.scene_config['workspace_ylim'][1] - pixel_y * self.camera_config['heightmap_resolution']
+
+        # Retrieve the depth value from the visual observation
+        grasp_z = self.visual_observation[:, :, -1][pixel_y, pixel_x]
+
+        # Define the grasp pose (position and yaw orientation)
+        self.grasp_pose = ((grasp_x, grasp_y, grasp_z), (1.0, 0.0, 0.0, 0.0))  # Grasp pose with quaternion representation
 
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
@@ -374,6 +389,7 @@ class TossObjects(BaseScene):
                 xlim=self.camera_config['cam_view_xlim'],
                 ylim=self.camera_config['cam_view_ylim'],
                 zlim=self.scene_config['workspace_zlim'],
+                heightmap_resolution=self.camera_config['heightmap_resolution']
             )
 
     def select_target_box(self):
@@ -416,8 +432,10 @@ class TossObjects(BaseScene):
                     depth_heightmap_normalized[..., np.newaxis]), \
                    axis=-1) if color_heightmap_normalized is not None \
                    or depth_heightmap_normalized is not None else None
+        
+        self.visual_observation = I
 
-        return (I, self.target_position)
+        return (self.visual_observation, self.target_position)
 
     def get_visual_observation(self):
         # Capture rgbd image

@@ -53,23 +53,23 @@ class BaseAgent(nn.Module):
 
         return q_g, q_t
     
-    def predict(self, observation, n_rotation=16):
+    def predict(self, observation, n_rotations=16):
         I, p = observation
         grasp_logits = []  # Store network raw outputs (logits) for each rotation
-        depth_heightmap_rotateds = []    # Store the rotated depth heightmap for visualization
+        depth_heightmaps = []    # Store the rotated depth heightmap for visualization
 
         # Convert the input image to tensor once
         I_tensor = np_image_to_tensor(I, self.device)
 
-        for i in range(n_rotation):
+        for i in range(n_rotations):
             # Calculate rotation angle for the current rotation step
-            theta = 360 / n_rotation * i
+            theta = 360 / n_rotations * i
 
             # Rotate the input tensor
             I_rotated = rotate_image_tensor(I_tensor, theta=theta)
 
             # Store the rotated heightmap(only depthmap)
-            depth_heightmap_rotateds.append(I_rotated[0, -1, :, :].detach().cpu().numpy())
+            depth_heightmaps.append(I_rotated[0, -1, :, :].detach().cpu().numpy())
 
             # Forward pass through the network
             q_g_tensor, q_t_tensor = self.forward(I_rotated)
@@ -92,7 +92,9 @@ class BaseAgent(nn.Module):
         # Find the index of the maximum value across the entire (n_rotation, H, W) array
         grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
 
-        return (grasp_pixel_index, None), depth_heightmap_rotateds
+        intermidiates = {"depth_heightmaps": depth_heightmaps}
+
+        return (grasp_pixel_index, None), intermidiates
 
 def draw_arrow_on_last_channel(heightmap, start, end):
     """
@@ -149,5 +151,5 @@ if __name__ == '__main__':
 
     # Make prediction with observation
     observation = (heightmap, target_position)
-    action, depth_heightmap_rotateds = agent.predict(observation=observation)
-    plot_heightmaps(depth_heightmap_rotateds)
+    action, intermidiates = agent.predict(observation=observation, n_rotations=1)
+    plot_heightmaps(intermidiates['depth_heightmaps'])

@@ -110,11 +110,12 @@ class BaseScene:
             tuple: Typically returns (next_obs, reward, terminated, truncated, info) for reinforcement learning tasks.
         """
         flag = True
+        self.pre_simulation_process(action)
         while flag:
             self.pre_simulation_step(action)
             self.simulation_step()
             self.post_simulation_step()
-
+        self.post_simulation_process()
         next_obs = self.get_observation()
         reward = self.get_reward()
         terminated = self.is_terminated()
@@ -133,7 +134,13 @@ class BaseScene:
         if self.use_gui:
             time.sleep(self.timestep)
 
-    def pre_simulation_step(self):
+    def pre_simulation_process(self, action):
+        pass
+
+    def post_simulation_process(self):
+        pass
+
+    def pre_simulation_step(self, action):
         pass
 
     def post_simulation_step(self):
