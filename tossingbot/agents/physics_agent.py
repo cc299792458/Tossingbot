@@ -7,7 +7,7 @@ from tossingbot.utils.pytorch_utils import np_image_to_tensor, tensor_to_np_imag
 from tossingbot.agents.base_agent import BaseAgent
 
 class PhysicsController:
-    def __init__(self, r_h, r_z):
+    def __init__(self, r_h=0.4, r_z=0.4):
         """
         Initialize the PhysicsController with specified parameters for throw distance and height.
 
@@ -18,7 +18,7 @@ class PhysicsController:
         self.r_h = r_h
         self.r_z = r_z
 
-    def calc_params(self, target_pos, phi_deg, g=9.81):
+    def predict(self, target_pos, phi_deg, g=9.81):
         """
         Calculate the throw parameters based on the target position and throw angle.
 
@@ -66,19 +66,31 @@ class PhysicsController:
         return (r_x, r_y, r_z), (v_x, v_y, v_z)
 
 class PhysicsAgent(BaseAgent):
-    def __init__(self, perception_module, grasping_module, throwing_module, device):
+    def __init__(
+            self, 
+            device: torch.device, 
+            perception_module: nn.Module, 
+            grasping_module: nn.Module, 
+            throwing_module: nn.Module, 
+            post_grasp_h: float,    # The horizontal distance from robot base to post grasp pose
+            post_grasp_z: float,    # The height for the post grasp pose
+            epsilons: list[float] = [0.5, 0.1],
+            physics_controller: PhysicsController = None
+        ):
         """
         Initialize the PhysicsAgent for TossingBot, inheriting from BaseAgent.
         
         This agent will incorporate physics-based decision-making into grasping and throwing actions.
         
         Args:
+            device (torch.device): The device to run computations on (e.g., 'cpu' or 'cuda').
             perception_module (nn.Module): Neural network module for perception, processes visual input I.
             grasping_module (nn.Module): Neural network module for predicting grasping parameters.
             throwing_module (nn.Module): Neural network module for predicting throwing parameters.
-            device (torch.device): The device to run computations on (e.g., 'cpu' or 'cuda').
         """
-        super(PhysicsAgent, self).__init__(perception_module, grasping_module, throwing_module, device)
+        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, post_grasp_h, post_grasp_z, epsilons)
+
+        self.physics_controller = physics_controller
     
     def forward(self, I):
         """
@@ -93,23 +105,19 @@ class PhysicsAgent(BaseAgent):
         # Call the base class forward method
         q_g, q_t = super().forward(I)
         
-        # Additional physics-based processing can be added here
-        
         return q_g, q_t
     
-    def predict(self, observation):
-        I, p = observation
-        
-        # Convert the image to a tensor
-        I_tensor = np_image_to_tensor(I, self.device)
-        
-        # Call the forward method to get predictions
-        q_g_tensor, q_t_tensor = self.forward(I_tensor)
-        
-        # Define action based on predictions (custom logic can be implemented here)
-        action = None
+    def predict(self, observation, n_rotations=16, phi_deg=45):
+        (grasp_pixel_index, post_grasp_pose, _, _), intermidiates = super().predict(observation=observation, n_rotations=n_rotations)
 
-        return action
+        I, p = observation
+
+        (r_x, r_y, r_z), (v_x, v_y, v_z) = self.physics_controller.predict(target_pos=p, phi_deg=phi_deg)
+
+        throw_pose = ([r_x, r_y, r_z], [1.0, 0.0, 0.0, 0.0])
+        throw_velocity = ([v_x, v_y, v_z], [0.0, 0.0, 0.0])
+
+        return (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity), intermidiates
 
 def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):
     """

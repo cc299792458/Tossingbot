@@ -358,7 +358,7 @@ class TossObjects(BaseScene):
 
     ############### Step ###############
     def pre_simulation_process(self, action):
-        self.grasp_pixel_index, throw_velocity = action
+        self.grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity = action
 
         # Unpack the grasp pixel index
         yaw_index, pixel_y, pixel_x = self.grasp_pixel_index

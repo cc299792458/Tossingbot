@@ -15,6 +15,8 @@ class BaseAgent(nn.Module):
             perception_module: nn.Module, 
             grasping_module: nn.Module, 
             throwing_module: nn.Module, 
+            post_grasp_h: float = 0.3,    # The horizontal distance from robot base to post grasp pose
+            post_grasp_z: float = 0.4,    # The height for the post grasp pose
             epsilons: list[float] = [0.5, 0.1]
         ):
         """
@@ -35,14 +37,17 @@ class BaseAgent(nn.Module):
         # Assign the device
         self.device = device
 
-        # Assign the epsilons
-        self.epsilons = epsilons
+        # Assign the post_grasp_h and post_grasp_z
+        self.post_grasp_h = post_grasp_h
+        self.post_grasp_z = post_grasp_z
 
         # Assign the modules
         self.perception_module = perception_module.to(self.device)
         self.grasping_module = grasping_module.to(self.device)
         self.throwing_module = throwing_module.to(self.device)
 
+        # Assign the epsilons
+        self.epsilons = epsilons
 
     def forward(self, I):
         """
@@ -104,9 +109,15 @@ class BaseAgent(nn.Module):
         # Find the index of the maximum value across the entire (n_rotation, H, W) array
         grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
 
-        intermidiates = {"depth_heightmaps": depth_heightmaps}
+        target_x, target_y = p[0], p[1]
+        theta = np.arctan2(target_y / target_x)
+        post_grasp_pose = ([self.post_grasp_h * np.cos(theta), self.post_grasp_h * np.sin(theta), self.post_grasp_z],
+                           [1.0, 0.0, 0.0, 0.0])
 
-        return (grasp_pixel_index, None), intermidiates
+        intermidiates = {"depth_heightmaps": depth_heightmaps,
+                         "q_t_tensor": q_t_tensor}
+
+        return (grasp_pixel_index, post_grasp_pose, None, None), intermidiates
 
 def draw_arrow_on_last_channel(heightmap, start, end):
     """
