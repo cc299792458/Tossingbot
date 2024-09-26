@@ -51,7 +51,7 @@ class TossObjects(BaseScene):
         default_visualize_config = {
             "visualize_coordinate_frames": True,
             "visualize_camera": True,
-            "visualize_visual_plots": True,
+            "visualize_visual_plots": False,
             "visualize_target": True,
         }
         if visualize_config is not None:
@@ -305,6 +305,8 @@ class TossObjects(BaseScene):
         Reset the robot's position.
         """
         self.robot.reset()
+        self.grasp_completed = False
+        self.throw_completed = False
 
     def reset_objects(self, margin=0.1):
         """
@@ -369,10 +371,40 @@ class TossObjects(BaseScene):
         grasp_y = self.scene_config['workspace_ylim'][1] - pixel_y * self.camera_config['heightmap_resolution']
 
         # Retrieve the depth value from the visual observation
-        grasp_z = self.visual_observation[:, :, -1][pixel_y, pixel_x]
+        grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
 
         # Define the grasp pose (position and yaw orientation)
-        self.grasp_pose = ((grasp_x, grasp_y, grasp_z), (1.0, 0.0, 0.0, 0.0))  # Grasp pose with quaternion representation
+        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], [1.0, 0.0, 0.0, 0.0])  # Grasp pose with quaternion representation
+
+        self.throw_pose = None
+
+        self.throw_velocity = throw_velocity
+
+    def post_simulation_process(self, action_completed):
+        if action_completed and self.is_workspace_empty():
+            self.reset_objects()
+
+        self.grasp_completed = False
+        self.throw_completed = False
+
+    def is_workspace_empty(self):
+        for object_id in self.object_ids:
+            if self.is_object_in_workspace(object_id=object_id):
+                return False
+        return True
+
+    def pre_simulation_step(self, action):
+        is_action_finished = False
+        if not self.grasp_completed:
+            self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.robot_config['post_grasp_pose'])
+        elif not self.grasp_success:
+            is_action_finished = True
+        elif not self.throw_completed:
+            self.throw_completed = self.robot.throw(tcp_target_pose=self.throw_pose, tcp_target_velocity=self.throw_velocity)
+        else:
+            is_action_finished
+
+        return is_action_finished
 
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
@@ -389,7 +421,6 @@ class TossObjects(BaseScene):
                 xlim=self.camera_config['cam_view_xlim'],
                 ylim=self.camera_config['cam_view_ylim'],
                 zlim=self.scene_config['workspace_zlim'],
-                heightmap_resolution=self.camera_config['heightmap_resolution']
             )
 
     def select_target_box(self):
@@ -433,9 +464,18 @@ class TossObjects(BaseScene):
                    axis=-1) if color_heightmap_normalized is not None \
                    or depth_heightmap_normalized is not None else None
         
-        self.visual_observation = I
+        self.visual_observation = {
+            'rgb_img': rgb_img,
+            'depth_img': depth_img,
+            'point_cloud': point_cloud,
+            'colors': colors,
+            'color_heightmap': color_heightmap,
+            'depth_heightmap': depth_heightmap,
+            'color_heightmap_normalized': color_heightmap_normalized,
+            'depth_heightmap_normalized': depth_heightmap_normalized,
+        }
 
-        return (self.visual_observation, self.target_position)
+        return (I, self.target_position)
 
     def get_visual_observation(self):
         # Capture rgbd image
@@ -469,6 +509,7 @@ class TossObjects(BaseScene):
                                                workspace_xlim=self.scene_config['workspace_xlim'], 
                                                workspace_ylim=self.scene_config['workspace_ylim'], 
                                                workspace_zlim=self.scene_config['workspace_zlim'],
+                                               heightmap_resolution=self.camera_config['heightmap_resolution'],
                                                rgb_mean=self.heightmap_stats['rgb_mean'] if hasattr(self, 'heightmap_stats') else None,
                                                rgb_std=self.heightmap_stats['rgb_std'] if hasattr(self, 'heightmap_stats') else None,
                                                depth_mean=self.heightmap_stats['depth_mean'] if hasattr(self, 'heightmap_stats') else None,
@@ -478,7 +519,7 @@ class TossObjects(BaseScene):
 
     def get_reward(self):
         # NOTE: for self-supervised learning, return label here
-        raise NotImplementedError
+        return None
     
     def get_label(self, best_grasp_pix_id):
         # TODO: labelling throwing
@@ -489,12 +530,11 @@ class TossObjects(BaseScene):
 
         return grasp_label, throw_label
 
-
     def is_terminated(self):
-        raise NotImplementedError
+        return False
 
     def is_truncated(self):
-        raise NotImplementedError
+        return False
     
     def get_info(self):
         return {
@@ -531,6 +571,17 @@ class TossObjects(BaseScene):
 
         return pose
     
+    def is_object_in_workspace(self, object_id):
+        object_pos = self.get_object_pose(object_id=object_id)[0]
+        workspace_xlim = self.scene_config['workspace_xlim']
+        workspace_ylim = self.scene_config['workspace_ylim']
+        
+        # Check if object is within the target box
+        in_x_range = workspace_xlim[0] < object_pos[0] < workspace_xlim[1]
+        in_y_range = workspace_ylim[0] < object_pos[1] < workspace_ylim[1]
+        
+        return in_x_range and in_y_range
+    
     def is_object_in_target_box(self, object_id):
         object_pos = self.get_object_pose(object_id=object_id)[0]
         box_length = self.scene_config['box_length']
@@ -543,7 +594,7 @@ class TossObjects(BaseScene):
         in_y_range = target_y - box_width / 2 < object_pos[1] < target_y + box_width / 2
         
         return in_x_range and in_y_range
-
+    
     ############### Visulization ###############
     def visualize_target(self):
         if not hasattr(self, 'target_position'):

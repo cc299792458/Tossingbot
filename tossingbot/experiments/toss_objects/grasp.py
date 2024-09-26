@@ -30,5 +30,5 @@ if __name__ == '__main__':
     obs, info = env.reset()
     while True:
         action, intermidiates = agent.predict(obs, n_rotations=n_rotations)
-        plot_heightmaps(intermidiates['depth_heightmaps'])
+        # plot_heightmaps(intermidiates['depth_heightmaps'])
         obs, reward, terminated, truncated, info = env.step(action=action)
