@@ -380,8 +380,8 @@ class TossObjects(BaseScene):
 
         self.throw_velocity = ([2.0, 0.0, 0.0], [0.0, 0.0, 0.0])
 
-    def post_simulation_process(self, action_completed):
-        if action_completed and self.does_workspace_need_reset():
+    def post_simulation_process(self, completed_and_static):
+        if completed_and_static and self.does_workspace_need_reset():
             self.reset_objects()
 
         self.grasp_completed = False
@@ -395,6 +395,7 @@ class TossObjects(BaseScene):
 
     def pre_simulation_step(self, action):
         is_action_finished = False
+        
         if not self.grasp_completed:
             self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.robot_config['post_grasp_pose'])
             if self.grasp_completed:
@@ -405,9 +406,16 @@ class TossObjects(BaseScene):
             self.throw_completed = self.robot.throw(tcp_target_pose=self.throw_pose, tcp_target_velocity=self.throw_velocity)
             if self.throw_completed:
                 self.check_throw_success()
-                is_action_finished = True
+        else:
+            is_action_finished = True
+        
+        are_objects_static = True
+        for object_id in self.object_ids:
+            # Set a big angular_threhold here to ignore the angular velocity
+            if not self.is_object_static(object_id=object_id, angular_threshold=10.0):
+                are_objects_static = False
 
-        return is_action_finished
+        return is_action_finished and are_objects_static
 
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
@@ -597,6 +605,23 @@ class TossObjects(BaseScene):
         in_y_range = target_y - box_width / 2 < object_pos[1] < target_y + box_width / 2
         
         return in_x_range and in_y_range
+    
+    def get_object_velocity(self, object_id):
+        if object_id in self.object_ids:
+            linear_velocity, angular_velocity = p.getBaseVelocity(object_id)
+            velocity = (linear_velocity, angular_velocity)
+            return velocity
+        else:
+            return None
+        
+    def is_object_static(self, object_id, linear_threshold=0.01, angular_threshold=0.01):
+        object_velocity = self.get_object_velocity(object_id=object_id)
+    
+        # Ensure object_velocity is not None
+        assert object_velocity is not None, f"Object with ID {object_id} does not exist or has no velocity data."
+
+        linear_velocity, angular_velocity = object_velocity
+        return np.all(np.abs(linear_velocity) < linear_threshold) and np.all(np.abs(angular_velocity) < angular_threshold)
     
     ############### Visulization ###############
     def visualize_target(self):

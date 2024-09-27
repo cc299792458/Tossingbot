@@ -109,13 +109,13 @@ class BaseScene:
         Returns:
             tuple: Typically returns (next_obs, reward, terminated, truncated, info) for reinforcement learning tasks.
         """
-        is_action_completed = False
+        completed_and_static = False    # is action completed and are objects static
         self.pre_simulation_process(action)
-        while not is_action_completed:
-            is_action_completed = self.pre_simulation_step(action)
+        while not completed_and_static:
+            completed_and_static = self.pre_simulation_step(action)
             self.simulation_step()
             self.post_simulation_step()
-        self.post_simulation_process(is_action_completed)
+        self.post_simulation_process(completed_and_static)
         next_obs = self.get_observation()
         reward = self.get_reward()
         terminated = self.is_terminated()
@@ -137,7 +137,7 @@ class BaseScene:
     def pre_simulation_process(self, action):
         pass
 
-    def post_simulation_process(self, action_completed):
+    def post_simulation_process(self, completed_and_static):
         pass
 
     def pre_simulation_step(self, action):
