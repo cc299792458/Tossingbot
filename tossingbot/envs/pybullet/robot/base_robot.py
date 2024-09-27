@@ -451,7 +451,7 @@ class BaseRobot:
 
         return False  # Grasping process not yet complete
 
-    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=0.1):
+    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=1.0, count_threshold=20, max_delta_velocity=0.1):
         """
         Perform a throwing action with three stages: 
         1. Move to the release point with a target velocity while correcting deviations.
@@ -462,6 +462,7 @@ class BaseRobot:
             tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
             tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
             correction_gain (float): Gain for correcting the deviation from the target pose.
+            count_threshold (int): Number of consecutive times distance increases before moving to the next step.
             
         Returns:
             bool: True if the throwing process is completed, False otherwise.
@@ -477,6 +478,18 @@ class BaseRobot:
         if self._throw_step == 0:
             current_pose = self.get_tcp_pose()  # Get the current TCP pose
             position_error = np.array(self.tcp_target_pose[0]) - np.array(current_pose[0])  # Position error
+            
+            # Track consecutive increases in distance to prevent the robot from crashing when missing the target
+            distance_to_target = np.linalg.norm(position_error)
+            if not hasattr(self, '_prev_distance_to_target'):
+                self._prev_distance_to_target = distance_to_target
+                self._dist_increase_counter = 0
+            else:
+                if distance_to_target > self._prev_distance_to_target:
+                    self._dist_increase_counter += 1
+                else:
+                    self._dist_increase_counter = 0
+                self._prev_distance_to_target = distance_to_target
 
             # Compute orientation error using quaternion difference
             current_orientation = R.from_quat(current_pose[1])
@@ -487,14 +500,44 @@ class BaseRobot:
             corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + correction_gain * position_error
             corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + correction_gain * orientation_error_axis_angle
 
+            # Increase the velocity gradually to avoid excessive acceleration
+            current_linear_velocity, current_angular_velocity = self.get_tcp_velocity()
+            linear_velocity_error = np.array(self.tcp_target_velocity[0]) - np.array(current_linear_velocity)
+
+            # Calculate the change in velocities
+            delta_linear_velocity = corrected_linear_velocity - current_linear_velocity
+            delta_angular_velocity = corrected_angular_velocity - current_angular_velocity
+
+            # Update the target velocities based on delta velocities
+            if np.linalg.norm(delta_linear_velocity) > max_delta_velocity:
+                target_linear_velocity = current_linear_velocity + max_delta_velocity * delta_linear_velocity / np.linalg.norm(delta_linear_velocity)
+            else:
+                target_linear_velocity = corrected_linear_velocity
+
+            if np.linalg.norm(delta_angular_velocity) > max_delta_velocity:
+                target_angular_velocity = current_angular_velocity + max_delta_velocity * delta_angular_velocity / np.linalg.norm(delta_angular_velocity)
+            else:
+                target_angular_velocity = corrected_angular_velocity
+
             # Use velocity IK to set joint velocities
-            joint_velocities = self.velocity_ik(corrected_linear_velocity, corrected_angular_velocity)
+            joint_velocities = self.velocity_ik(target_linear_velocity, target_angular_velocity)
             self.set_arm_joint_velocity_target(joint_velocities)
 
-            # Check if position error is small enough to move to the next stage
-            if np.linalg.norm(position_error) < 0.01:
+            # Check if position error and velocity error is small enough to move to the next stage
+            if np.linalg.norm(position_error) < 0.05 and np.linalg.norm(linear_velocity_error) < 0.1 * np.linalg.norm(self.tcp_target_velocity[0]):
                 self._throw_step = 1
                 self._open_threshold = max(self.get_gripper_position()) + 0.005
+                del self._prev_distance_to_target
+                del self._dist_increase_counter
+
+                return False  # Throwing not yet complete
+            # Deviating from the target indicates a failed throw, so stop it immediately.
+            elif self._dist_increase_counter > count_threshold:
+                self._throw_step = 2
+                del self._prev_distance_to_target
+                del self._dist_increase_counter
+                self._open_threshold = None
+
                 return False  # Throwing not yet complete
 
         # Stage 2: Release the object by opening the gripper

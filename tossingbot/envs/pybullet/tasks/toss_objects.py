@@ -418,7 +418,7 @@ class TossObjects(BaseScene):
         are_objects_static = True
         for object_id in self.object_ids:
             # Set a big angular_threhold here to ignore the angular velocity
-            if not self.is_object_static(object_id=object_id, angular_threshold=10.0):
+            if not self.is_object_static(object_id=object_id, linear_threshold=0.05, angular_threshold=10.0):
                 are_objects_static = False
 
         return is_action_finished and are_objects_static
