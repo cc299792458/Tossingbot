@@ -1,9 +1,9 @@
 import torch
 
 from tossingbot.utils.misc_utils import set_seed
-from tossingbot.agents.base_agent import BaseAgent
 from tossingbot.envs.pybullet.tasks import TossObjects
 from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
+from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 if __name__ == '__main__':
@@ -14,9 +14,12 @@ if __name__ == '__main__':
     
     # Parameters
     n_rotations = 1
+    box_n_rows = 1
 
     # Env
-    env = TossObjects(camera_config={'n_rotations': n_rotations})
+    env = TossObjects(
+        scene_config={'box_n_rows': box_n_rows},
+        camera_config={'n_rotations': n_rotations})
 
     # Networks
     perception_module = PerceptionModule()
@@ -24,7 +27,13 @@ if __name__ == '__main__':
     throwing_module = ThrowingModule()
 
     # Agent
-    agent = BaseAgent(device=device, perception_module=perception_module, grasping_module=grasping_module, throwing_module=throwing_module)
+    physics_controller = PhysicsController()
+    agent = PhysicsAgent(
+        device=device, 
+        perception_module=perception_module, 
+        grasping_module=grasping_module, 
+        throwing_module=throwing_module,
+        physics_controller=physics_controller)
 
     # Main loop
     obs, info = env.reset()

@@ -1,10 +1,12 @@
 import torch
-import torch.nn as nn
 import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-from tossingbot.utils.pytorch_utils import np_image_to_tensor, tensor_to_np_image
 from tossingbot.agents.base_agent import BaseAgent
+from tossingbot.utils.pytorch_utils import np_image_to_tensor
+from tossingbot.envs.pybullet.utils.math_utils import rotate_image_tensor
 
 class PhysicsController:
     def __init__(self, r_h=0.4, r_z=0.4):
@@ -69,13 +71,13 @@ class PhysicsAgent(BaseAgent):
     def __init__(
             self, 
             device: torch.device, 
-            perception_module: nn.Module, 
-            grasping_module: nn.Module, 
-            throwing_module: nn.Module, 
-            post_grasp_h: float,    # The horizontal distance from robot base to post grasp pose
-            post_grasp_z: float,    # The height for the post grasp pose
+            perception_module: nn.Module = None, 
+            grasping_module: nn.Module = None, 
+            throwing_module: nn.Module = None, 
+            physics_controller: PhysicsController = None,
+            post_grasp_h: float = 0.3,    # The horizontal distance from robot base to post grasp pose
+            post_grasp_z: float = 0.4,    # The height for the post grasp pose
             epsilons: list[float] = [0.5, 0.1],
-            physics_controller: PhysicsController = None
         ):
         """
         Initialize the PhysicsAgent for TossingBot, inheriting from BaseAgent.
@@ -92,9 +94,19 @@ class PhysicsAgent(BaseAgent):
 
         self.physics_controller = physics_controller
     
-    def forward(self, I):
+    def forward(self, I, v):
         """
         Forward pass to predict grasping and throwing parameters with additional physics considerations.
+
+        Args:
+            I (torch.Tensor): Visual observation (e.g., image or feature map).
+            v (float): Predicted velocity from physics controller.
+
+        Returns:
+            tuple: Predicted grasping parameters (phi_g) and throwing parameters (phi_t).
+        """
+        """
+        Forward pass to predict grasping and throwing parameters.
 
         Args:
             I (torch.Tensor): Visual observation (e.g., image or feature map).
@@ -102,20 +114,70 @@ class PhysicsAgent(BaseAgent):
         Returns:
             tuple: Predicted grasping parameters (phi_g) and throwing parameters (phi_t).
         """
-        # Call the base class forward method
-        q_g, q_t = super().forward(I)
-        
+        # Step 1: Use perception module to process the visual input and extract spatial features (mu)
+        mu = self.perception_module(I)
+
+        # Step 2: Use the perception output (mu) to predict grasping probability map (q_g)
+        q_g = self.grasping_module(mu)
+
+        # Step 3: Use the same perception output (mu) to predict throwing probability map (q_t)
+        q_t = self.throwing_module(mu)
+
         return q_g, q_t
     
     def predict(self, observation, n_rotations=16, phi_deg=45):
-        (grasp_pixel_index, post_grasp_pose, _, _), intermidiates = super().predict(observation=observation, n_rotations=n_rotations)
-
         I, p = observation
 
         (r_x, r_y, r_z), (v_x, v_y, v_z) = self.physics_controller.predict(target_pos=p, phi_deg=phi_deg)
 
+        grasp_logits = []  # Store network raw outputs (logits) for each rotation
+        depth_heightmaps = []    # Store the rotated depth heightmap for visualization
+
+        # Convert the input image to tensor once
+        I_tensor = np_image_to_tensor(I, self.device)
+
+        for i in range(n_rotations):
+            # Calculate rotation angle for the current rotation step
+            theta = 360 / n_rotations * i
+
+            # Rotate the input tensor
+            I_rotated = rotate_image_tensor(I_tensor, theta=theta)
+
+            # Store the rotated heightmap(only depthmap)
+            depth_heightmaps.append(I_rotated[0, -1, :, :].detach().cpu().numpy())
+
+            # Forward pass through the network
+            q_g_tensor, q_t_tensor = self.forward(I_rotated)
+
+            # Undo the rotation on the grasp logits
+            q_g_rotated_back = rotate_image_tensor(q_g_tensor, theta=-theta)
+
+            # Collect the network raw outputs (logits) for this rotation
+            grasp_logits.append(q_g_rotated_back)
+
+        # Concatenate all grasp logits along the first dimension (n_rotation)
+        concatenated_logits = torch.cat(grasp_logits, dim=0)  # Concatenate along the first dimension
+
+        # Apply softmax to obtain the final grasp affordances (probabilities)
+        grasp_affordances = F.softmax(concatenated_logits, dim=1)
+
+        # Detach from the computation graph and move to CPU
+        grasp_affordances = grasp_affordances.detach().cpu().numpy()[:, 0, :, :]  # Actual affordances
+
+        # Find the index of the maximum value across the entire (n_rotation, H, W) array
+        grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
+
+        target_x, target_y = p[0], p[1]
+        theta = np.arctan2(target_y, target_x)
+
+        post_grasp_pose = ([self.post_grasp_h * np.cos(theta), self.post_grasp_h * np.sin(theta), self.post_grasp_z],
+                           [1.0, 0.0, 0.0, 0.0])
+
         throw_pose = ([r_x, r_y, r_z], [1.0, 0.0, 0.0, 0.0])
         throw_velocity = ([v_x, v_y, v_z], [0.0, 0.0, 0.0])
+
+        intermidiates = {"depth_heightmaps": depth_heightmaps,
+                         "q_t_tensor": q_t_tensor}
 
         return (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity), intermidiates
 
