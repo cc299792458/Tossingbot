@@ -201,7 +201,11 @@ class PhysicsAgent(BaseAgent):
         # Return intermediate values and predictions
         intermediates = {
             "depth_heightmaps": depth_heightmaps, 
-            "q_t_tensor": q_t_tensor
+            "grasp_affordances": grasp_affordances,
+            "q_g_tensor": q_g_tensor,
+            "q_t_tensor": q_t_tensor,
+            "q_i_logits": q_g_tensor[grasp_pixel_index[0], :, grasp_pixel_index[1], grasp_pixel_index[2]],
+            "delta_i": q_t_tensor[grasp_pixel_index[0], 0, grasp_pixel_index[1], grasp_pixel_index[2]], 
         }
 
         return (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity), intermediates

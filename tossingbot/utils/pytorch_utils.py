@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import torch.nn as nn
 
 def np_image_to_tensor(np_image, device):
     """
@@ -14,3 +15,11 @@ def tensor_to_np_image(tensor):
     """
     # Remove batch dimension and rearrange back to (H, W, 3), converting to float64
     return tensor.squeeze(0).permute(1, 2, 0).cpu().detach().numpy().astype(np.float64)
+
+def initialize_weights(model):
+    """ Apply Xavier initialization to all Conv2d and Linear layers. """
+    for m in model.modules():
+        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)

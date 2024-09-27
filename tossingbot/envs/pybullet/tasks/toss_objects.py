@@ -446,22 +446,12 @@ class TossObjects(BaseScene):
         target_row = target_box // cols
         target_col = target_box % cols
 
-        # Get box dimensions and position
-        length = self.scene_config['box_length']
-        width = self.scene_config['box_width']
+        # # Get box dimensions and position
         height = self.scene_config['box_height']
-        central_position = self.scene_config['box_position']
-
-        # Calculate the offset for the selected box
-        row_offset = target_row - (rows - 1) / 2
-        col_offset = target_col - (cols - 1) / 2
+        target_x, target_y = self.get_box_position(row=target_row, col=target_col)
 
         # Set target position
-        self.target_position = [
-            central_position[0] + row_offset * length,
-            central_position[1] + col_offset * width,
-            height
-        ]
+        self.target_position = [target_x, target_y, height]
 
         if self.use_gui and self.visualize_config['visualize_target']:
             self.visualize_target()
@@ -535,12 +525,38 @@ class TossObjects(BaseScene):
     
     def get_label(self):
         # TODO: labelling throwing
-        length, width = self.visual_observation['depth_heightmap'].shape
-        grasp_label, throw_label = np.ones([length, width]), np.zeros([length, width])
         if self.grasp_success:
-            grasp_label[self.grasp_pixel_index[1], self.grasp_pixel_index[2]] = 0
+            grasp_label = 0
+        else:
+            grasp_label = 1
 
-        return grasp_label, throw_label
+        gt_residual_label = self.get_gt_residual_velocity()
+            
+        return (grasp_label, gt_residual_label)
+    
+    def get_gt_residual_velocity(self):
+        """
+            Get the ground truth residual velocity based on the landing position of the object.
+        """
+        return None
+        if self.throw_success:
+            return 
+        else:
+            for row in self.scene_config['box_n_rows']:
+                for col in self.scene_config['box_n_cols']:
+                    if self.is_object_in_box(self.grasped_object_id, row, col):
+                        box_x, box_y = self.get_box_position(row=row, col=col)
+                        actual_throw_velocity = self.compute_throw_velocity((box_x, box_y, self.scene_config['box_height']))
+
+            
+            return None
+
+    def compute_throw_velocity(self, landing_position):
+        """
+            Compute the throw velocity based on the landing position of the object.
+        """
+        
+
 
     def is_terminated(self):
         return False
@@ -606,6 +622,39 @@ class TossObjects(BaseScene):
         in_y_range = target_y - box_width / 2 < object_pos[1] < target_y + box_width / 2
         
         return in_x_range and in_y_range
+    
+    def is_object_in_box(self, object_id, row, col):
+        # Get object position
+        object_pos = self.get_object_pose(object_id=object_id)[0]
+
+        # Get box dimensions and position
+        box_length = self.scene_config['box_length']
+        box_width = self.scene_config['box_width']
+        box_x, box_y = self.get_box_position(row=row, col=col)
+        
+        # Check if object is within the target box
+        in_x_range = box_x - box_length / 2 < object_pos[0] < box_x + box_length / 2
+        in_y_range = box_y - box_width / 2 < object_pos[1] < box_y + box_width / 2
+
+        return in_x_range and in_y_range
+    
+    def get_box_position(self, row, col):
+        # Get box dimensions and position
+        rows = self.scene_config['box_n_rows']
+        cols = self.scene_config['box_n_cols']
+        box_length = self.scene_config['box_length']
+        box_width = self.scene_config['box_width']
+        central_position = self.scene_config['box_position']
+
+        # Calculate the offset for the box
+        row_offset = row - (rows - 1) / 2
+        col_offset = col - (cols - 1) / 2
+
+        # Calculate the box position
+        box_x = central_position[0] + row_offset * box_length
+        box_y = central_position[1] + col_offset * box_width
+        
+        return box_x, box_y
     
     def get_object_velocity(self, object_id):
         if object_id in self.object_ids:
