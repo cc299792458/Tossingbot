@@ -525,7 +525,7 @@ class TossObjects(BaseScene):
     
     def get_label(self):
         # TODO: labelling throwing
-        if self.grasp_success:
+        if self.grasp_success:  # NOTE: use self.throw_success as condition to supervise grasping with throwing performance
             grasp_label = 0
         else:
             grasp_label = 1
@@ -538,9 +538,8 @@ class TossObjects(BaseScene):
         """
             Get the ground truth residual velocity based on the landing position of the object.
         """
-        return None
-        if self.throw_success:
-            return 
+        if not self.grasp_success:
+            return None
         else:
             for row in self.scene_config['box_n_rows']:
                 for col in self.scene_config['box_n_cols']:
@@ -551,12 +550,50 @@ class TossObjects(BaseScene):
             
             return None
 
-    def compute_throw_velocity(self, landing_position):
+    def compute_throw_velocity(self, landing_position, g=9.81):
         """
-            Compute the throw velocity based on the landing position of the object.
-        """
-        
+        Compute the throw velocity based on the landing position of the object.
 
+        Args:
+            landing_position (tuple): Actual landing position as (x, y, z).
+            g (float): Gravitational acceleration (default: 9.81 m/s²).
+
+        Returns:
+            tuple: The calculated velocity components (v_x, v_y, v_z) and angular velocity (set to zero).
+        """
+        # Extract throw pose and velocity components
+        r_h = np.linalg.norm(self.throw_pose[0][:2])  # Horizontal distance in the throw pose
+        r_z = self.throw_pose[0][2]                  # Vertical distance in the throw pose
+        v_h = np.linalg.norm(self.throw_velocity[0][:2])  # Horizontal velocity
+        v_z = self.throw_velocity[0][2]              # Vertical velocity
+
+        # Extract landing position
+        p_h = np.linalg.norm(landing_position[:2])   # Horizontal distance in the landing position
+        p_z = landing_position[2]                    # Vertical distance in the landing position
+
+        # Calculate differences in horizontal and vertical positions
+        delta_h = p_h - r_h
+        delta_z = p_z - r_z
+
+        # Calculate angles
+        theta = np.arctan2(self.throw_velocity[0][1], self.throw_velocity[0][0])  # Horizontal angle
+        phi = np.arctan2(v_z, v_h)  # Vertical angle
+
+        # Calculate velocity magnitude using physics formula
+        numerator = g * delta_h**2
+        denominator = 2 * np.cos(phi)**2 * (np.tan(phi) * delta_h - delta_z)
+
+        if denominator <= 0:
+            raise ValueError("Invalid parameters leading to an impossible trajectory.")
+
+        v_magnitude = np.sqrt(numerator / denominator)
+
+        # Compute velocity components
+        v_x = v_magnitude * np.cos(phi) * np.cos(theta)
+        v_y = v_magnitude * np.cos(phi) * np.sin(theta)
+        v_z = v_magnitude * np.sin(phi)
+
+        return ([v_x, v_y, v_z], [0.0, 0.0, 0.0])  # Linear velocity and zero angular velocity
 
     def is_terminated(self):
         return False

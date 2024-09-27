@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import torch.nn as nn
@@ -6,18 +7,22 @@ import torch.optim as optim
 from tqdm import tqdm 
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
-from tossingbot.utils.pytorch_utils import initialize_weights
 from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
+from tossingbot.utils.pytorch_utils import initialize_weights, load_model, save_model
 
 if __name__ == '__main__':
     set_seed()
 
+    # Log directory
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs") 
+    
     # Set device (use GPU if available, otherwise CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Parameters
+    use_gui = False
     box_n_rows, box_n_cols = 1, 1
 
     r_h = 0.5
@@ -25,15 +30,17 @@ if __name__ == '__main__':
     n_rotations = 1
     phi_deg = 0
 
-    total_episodes = 10_000
+    total_episodes = 100
 
     # Env
     env = TossObjects(
+        use_gui=use_gui,
         scene_config={
             'box_n_rows': box_n_rows,
             'box_n_cols': box_n_cols,
         },
-        camera_config={'n_rotations': n_rotations})
+        camera_config={'n_rotations': n_rotations}
+    )
 
     # Networks
     perception_module = PerceptionModule()
@@ -63,9 +70,12 @@ if __name__ == '__main__':
     grasp_criterion = nn.CrossEntropyLoss()
     throw_criterion = nn.SmoothL1Loss()  # Huber loss
 
+    # Optionally load the model
+    start_episode = load_model(agent, optimizer, log_dir)
+
     # Main loop
     obs, info = env.reset()
-    for episode in tqdm(range(total_episodes), desc="Training Progress"):
+    for episode in tqdm(range(start_episode, total_episodes), desc="Training Progress"):
         action, intermediates = agent.predict(obs, n_rotations=n_rotations, phi_deg=phi_deg)
         # plot_heightmaps(intermidiates['depth_heightmaps'])
         obs, reward, terminated, truncated, info = env.step(action=action)
@@ -93,3 +103,5 @@ if __name__ == '__main__':
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+    save_model(agent, optimizer, episode, log_dir)

@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import torch.nn as nn
@@ -23,3 +24,30 @@ def initialize_weights(model):
             nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+
+def save_model(agent, optimizer, episode, log_dir):
+    # Ensure the log directory exists
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Save the model
+    model_path = os.path.join(log_dir, 'agent_checkpoint.pth')
+    torch.save({
+        'episode': episode,
+        'model_state_dict': agent.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, model_path)
+    print(f"Model saved at {model_path}")
+
+def load_model(agent, optimizer, log_dir):
+    # Load the model if exists
+    model_path = os.path.join(log_dir, 'agent_checkpoint.pth')
+    if os.path.isfile(model_path):
+        checkpoint = torch.load(model_path)
+        agent.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        episode = checkpoint['episode']
+        print(f"Model loaded from {model_path}, resuming from episode {episode}")
+        return episode
+    else:
+        print("No checkpoint found, starting from scratch.")
+        return 0
