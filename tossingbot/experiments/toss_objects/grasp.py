@@ -13,8 +13,9 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Parameters
-    n_rotations = 1
     box_n_rows = 1
+    n_rotations = 1
+    phi_deg = 0
 
     # Env
     env = TossObjects(
@@ -38,6 +39,6 @@ if __name__ == '__main__':
     # Main loop
     obs, info = env.reset()
     while True:
-        action, intermidiates = agent.predict(obs, n_rotations=n_rotations)
+        action, intermidiates = agent.predict(obs, n_rotations=n_rotations, phi_deg=phi_deg)
         # plot_heightmaps(intermidiates['depth_heightmaps'])
         obs, reward, terminated, truncated, info = env.step(action=action)

@@ -55,7 +55,7 @@ class PerceptionModule(nn.Module):
 class GraspingModule(nn.Module):
     def __init__(self):
         super(GraspingModule, self).__init__()
-        self.rb1 = ResidualBlock(512, 256)
+        self.rb1 = ResidualBlock(640, 256)  # 512 dim visual feature + 128 dim estimated velocity
         self.rb2 = ResidualBlock(256, 128)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.rb3 = ResidualBlock(128, 64)
@@ -75,7 +75,7 @@ class GraspingModule(nn.Module):
 class ThrowingModule(nn.Module):
     def __init__(self):
         super(ThrowingModule, self).__init__()
-        self.rb1 = ResidualBlock(512, 256)
+        self.rb1 = ResidualBlock(640, 256)  # 512 dim visual feature + 128 dim estimated velocity
         self.rb2 = ResidualBlock(256, 128)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         self.rb3 = ResidualBlock(128, 64)
@@ -91,7 +91,6 @@ class ThrowingModule(nn.Module):
         x = self.conv_final(x)
         return x
 
-# Example usage
 if __name__ == '__main__':
     # Create instances of each module
     perception_module = PerceptionModule()
@@ -101,13 +100,22 @@ if __name__ == '__main__':
     # Sample input tensor (Batch size 1, 4 channels, 180x140 image)
     input_tensor = torch.randn(1, 4, 180, 140)
 
+    physics_velocity = 3.5  # Example estimated velocity
+
     # Pass input through Perception Module
     perception_output = perception_module(input_tensor)
-    print(f'Perception Output Shape: {perception_output.shape}')
+    print(f'Perception Output Shape: {perception_output.shape}')  # Expected shape: [1, 512, H, W]
 
-    # Pass perception output to Grasping and Throwing Modules
-    grasping_output = grasping_module(perception_output)
-    throwing_output = throwing_module(perception_output)
+    # Create a velocity image (B, 128, H, W) with each pixel holding the value of the estimated velocity
+    B, C, H, W = perception_output.shape
+    velocity_image = torch.full((B, 128, H, W), physics_velocity, device=perception_output.device)
 
-    print(f'Grasping Output Shape: {grasping_output.shape}')
-    print(f'Throwing Output Shape: {throwing_output.shape}')
+    # Concatenate the perception output and the velocity image
+    perception_with_velocity = torch.cat([perception_output, velocity_image], dim=1)  # New shape: [1, 640, H, W]
+
+    # Pass concatenated output to Grasping and Throwing Modules
+    grasping_output = grasping_module(perception_with_velocity)
+    throwing_output = throwing_module(perception_with_velocity)
+
+    print(f'Grasping Output Shape: {grasping_output.shape}')  # Expected output: [1, 2, H', W']
+    print(f'Throwing Output Shape: {throwing_output.shape}')  # Expected output: [1, 1, H', W']

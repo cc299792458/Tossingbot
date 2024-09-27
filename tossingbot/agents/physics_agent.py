@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 
 from tossingbot.agents.base_agent import BaseAgent
 from tossingbot.utils.pytorch_utils import np_image_to_tensor
+from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.envs.pybullet.utils.math_utils import rotate_image_tensor
+from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 class PhysicsController:
     def __init__(self, r_h=0.4, r_z=0.4):
@@ -94,8 +96,10 @@ class PhysicsAgent(BaseAgent):
             post_grasp_z (float): Height for the post-grasp pose.
             epsilons (list[float]): Epsilon values for exploration.
         """
-        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, post_grasp_h, post_grasp_z, epsilons)
+        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons)
         self.physics_controller = physics_controller
+        self.post_grasp_h = post_grasp_h
+        self.post_grasp_z = post_grasp_z
 
     def forward(self, I, v):
         """
@@ -103,22 +107,29 @@ class PhysicsAgent(BaseAgent):
 
         Args:
             I (torch.Tensor): Visual observation (e.g., image or feature map).
-            v: (float): Predicted velocity given by physics controller
+            v (float): Predicted velocity given by physics controller.
+            
         Returns:
             tuple: Predicted grasping parameters (q_g) and throwing parameters (q_t).
         """
-        # Step 1: Process the visual input using the perception module to extract features (mu)
+        # Step 1: Process the visual input using the perception module to extract visual features (mu)
         mu = self.perception_module(I)
 
         # Step 2: Concatenate the visual features with the predicted velocity
+        B, _, H, W = mu.shape
+        assert B == 1, "Batch size must be 1"
         
+        # Create a velocity image with the same spatial dimensions as mu and concatenate it
+        velocity_image = torch.full((B, 128, H, W), v, device=self.device)
+        fused_features = torch.cat([mu, velocity_image], dim=1)  # Concatenating along the channel dimension
+
         # Step 3: Predict the grasping probability map (q_g) and throwing probability map (q_t)
-        q_g = self.grasping_module(mu)
-        q_t = self.throwing_module(mu)
+        q_g = self.grasping_module(fused_features)
+        q_t = self.throwing_module(fused_features)
 
         return q_g, q_t
     
-    def predict(self, observation, n_rotations=16, phi_deg=0):
+    def predict(self, observation, n_rotations=16, phi_deg=45):
         """
         Predict the best grasping and throwing actions based on the observation.
 
@@ -134,6 +145,9 @@ class PhysicsAgent(BaseAgent):
 
         # Get throwing parameters from the physics controller
         (r_x, r_y, r_z), (v_x, v_y, v_z) = self.physics_controller.predict(target_pos=p, phi_deg=phi_deg)
+
+        # Calculate the throwing velocity magnitude
+        v_magnitude = np.sqrt(v_x**2 + v_y**2 + v_z**2)
 
         grasp_logits = []  # Store network raw outputs (logits) for each rotation
         depth_heightmaps = []  # Store the rotated depth heightmaps for visualization
@@ -152,7 +166,7 @@ class PhysicsAgent(BaseAgent):
             depth_heightmaps.append(I_rotated[0, -1, :, :].detach().cpu().numpy())
 
             # Forward pass through the network
-            q_g_tensor, q_t_tensor = self.forward(I_rotated)
+            q_g_tensor, q_t_tensor = self.forward(I=I_rotated, v=v_magnitude)
 
             # Undo the rotation for grasp logits
             q_g_rotated_back = rotate_image_tensor(q_g_tensor, theta=-theta)
@@ -192,7 +206,7 @@ class PhysicsAgent(BaseAgent):
 
         return (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity), intermediates
 
-
+############### Visualization ###############
 def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):
     """
     Plot the trajectory based on initial velocity and throw position.
@@ -252,18 +266,76 @@ def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):
 
     plt.show()
 
+def draw_arrow_on_last_channel(heightmap, start, end):
+    """
+    Modify the last channel of the heightmap to include an arrow shape.
+
+    Args:
+        heightmap (ndarray): Heightmap with shape (H, W, C) where the last channel is modified.
+        start (tuple): Starting point (x, y) of the arrow.
+        end (tuple): End point (x, y) of the arrow.
+    """
+    # Get heightmap dimensions
+    H, W, C = heightmap.shape
+
+    # Calculate the vector components for the arrow (direction from start to end)
+    arrow_length = max(abs(end[0] - start[0]), abs(end[1] - start[1]))
+    dx = (end[0] - start[0]) / arrow_length
+    dy = (end[1] - start[1]) / arrow_length
+
+    # Draw the arrow on the last channel (increment values along the arrow's path)
+    for i in range(int(arrow_length)):
+        x = int(start[0] + i * dx)
+        y = int(start[1] + i * dy)
+        if 0 <= x < W and 0 <= y < H:
+            heightmap[y, x, -1] = 1  # Modify the last channel to mark the arrow path
+
+    # Mark the arrowhead (using a simple cross to denote the arrowhead)
+    if 0 <= end[0] < W and 0 <= end[1] < H:
+        heightmap[end[1], end[0], -1] = 2  # Arrowhead is a stronger mark
+        if end[1] + 1 < H: heightmap[end[1] + 1, end[0], -1] = 2
+        if end[1] - 1 >= 0: heightmap[end[1] - 1, end[0], -1] = 2
+        if end[0] + 1 < W: heightmap[end[1], end[0] + 1, -1] = 2
+        if end[0] - 1 >= 0: heightmap[end[1], end[0] - 1, -1] = 2
+
+    return heightmap
+
+# Example usage
 if __name__ == '__main__':
-    # Example usage
     r_h = 0.5
     r_z = 0.5
     target_pos = (2, 0, 0)  # Target position
     phi = 0  # Launch angle
 
-    controller = PhysicsController(r_h=r_h, r_z=r_z)
-    throw_pos, throw_vel = controller.calc_params(target_pos, phi)
+    physics_controller = PhysicsController(r_h=r_h, r_z=r_z)
+    throw_pos, throw_vel = physics_controller.predict(target_pos, phi)
 
     print(f"Throw position: {throw_pos}")
     print(f"Throw velocity (linear): {throw_vel}")
 
     # Plot the trajectory
     plot_trajectory(throw_pos, throw_vel, target_pos)
+
+    # Initialize input data
+    heightmap = np.zeros([80, 60, 4])  # 80x60 heightmap with 4 channels
+    start_point = (10, 20)  # Starting point of the arrow
+    end_point = (50, 60)  # End point of the arrow
+    heightmap = draw_arrow_on_last_channel(heightmap, start=start_point, end=end_point)
+    target_position = np.array([2.0, 0.0, 0.1])  # Target position in (x, y, z)
+
+    # Initialize modules and agent
+    perception_module = PerceptionModule()
+    grasp_module = GraspingModule()
+    throw_module = ThrowingModule()
+    agent = PhysicsAgent(
+        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+        perception_module=perception_module,
+        grasping_module=grasp_module,
+        throwing_module=throw_module,
+        physics_controller=physics_controller
+    )
+
+    # Make prediction with observation
+    observation = (heightmap, target_position)
+    action, intermidiates = agent.predict(observation=observation, n_rotations=16)
+    plot_heightmaps(intermidiates['depth_heightmaps'])
