@@ -248,8 +248,8 @@ class TossObjects(BaseScene):
         color = [0.545, 0.271, 0.075, 1.0]
 
         # Calculate the adjusted total size of the grid
-        total_length = n_cols * length - 2 * divider_thickness
-        total_width = n_rows * width - 2 * divider_thickness
+        total_length = n_rows * length - 2 * divider_thickness
+        total_width = n_cols * width - 2 * divider_thickness
 
         # Calculate the start position to center the grid around the specified position
         x_start = position[0] - total_length / 2
@@ -270,13 +270,13 @@ class TossObjects(BaseScene):
                                 mass=0, color=color))
 
         # Create internal dividers
-        for i in range(1, n_rows):
+        for i in range(1, n_cols):
             y = y_start + i * width - divider_thickness
             self.box_ids.append(create_box(half_extents=[total_length / 2, divider_thickness / 2, height / 2],
                                     position=[position[0], y, height / 2],
                                     mass=0, color=color))
 
-        for j in range(1, n_cols):
+        for j in range(1, n_rows):
             x = x_start + j * length - divider_thickness
             self.box_ids.append(create_box(half_extents=[divider_thickness / 2, total_width / 2, height / 2],
                                     position=[x, position[1], height / 2],
