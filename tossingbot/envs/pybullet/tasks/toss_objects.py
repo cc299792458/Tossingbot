@@ -85,7 +85,6 @@ class TossObjects(BaseScene):
             "base_position": [0.0, 0.0, 0.0],
             "base_orientation": [0.0, 0.0, 0.0],
             "robot_type": 'panda',
-            "post_grasp_pose": ([0.3, 0.0, 0.4], [1.0, 0.0, 0.0, 0.0]),   # NOTE: This can be given by the agent in a more complex setting
             "visualize_coordinate_frames": use_gui and self.visualize_config['visualize_coordinate_frames'],
         }
         if robot_config is not None:
@@ -306,9 +305,8 @@ class TossObjects(BaseScene):
         """
         self.robot.reset()
 
-        if init:
-            self.grasp_completed = False
-            self.throw_completed = False
+        self.grasp_completed = False
+        self.throw_completed = False
 
     def reset_objects(self, init=False, margin=0.1):
         """
@@ -377,21 +375,18 @@ class TossObjects(BaseScene):
         # Retrieve the depth value from the visual observation
         grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
 
-        # Define the grasp pose (position and yaw orientation)
+        # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
         self.grasp_pose = ([grasp_x, grasp_y, grasp_z], [1.0, 0.0, 0.0, 0.0])  # Grasp pose with quaternion representation
-
-        self.throw_pose = ([0.4, 0.0, 0.4], [1.0, 0.0, 0.0, 0.0])
-
-        self.throw_velocity = ([2.0, 0.0, 0.0], [0.0, 0.0, 0.0])
+        self.post_grasp_pose = post_grasp_pose
+        self.throw_pose = throw_pose
+        self.throw_velocity = throw_velocity
 
     def post_simulation_process(self, completed_and_static):
         if completed_and_static and self.does_workspace_need_reset():
             self.reset_objects()
 
-        self.select_target_box()
-
-        self.grasp_completed = False
-        self.throw_completed = False
+        self.reset_robot()
+        self.reset_task()
 
     def does_workspace_need_reset(self):
         for object_id in self.object_ids:
@@ -403,7 +398,7 @@ class TossObjects(BaseScene):
         is_action_finished = False
         
         if not self.grasp_completed:
-            self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.robot_config['post_grasp_pose'])
+            self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.post_grasp_pose)
             if self.grasp_completed:
                 self.check_grasp_success()
         elif not self.grasp_success:
@@ -497,17 +492,17 @@ class TossObjects(BaseScene):
     def get_visual_observation(self):
         # Capture rgbd image
         rgb_img, depth_img, view_matrix = capture_rgbd_image(
-            cam_target_pos=self.camera_config['cam_target_pos'], 
-            cam_distance=self.camera_config['cam_distance'], 
-            width=self.camera_config['width'], 
+            cam_target_pos=self.camera_config['cam_target_pos'],
+            cam_distance=self.camera_config['cam_distance'],
+            width=self.camera_config['width'],
             height=self.camera_config['height'],
-            cam_yaw=self.camera_config['cam_yaw'], 
+            cam_yaw=self.camera_config['cam_yaw'],
             cam_pitch=self.camera_config['cam_pitch'], 
             cam_roll=self.camera_config['cam_roll'],
-            fov=self.camera_config['fov'], 
-            aspect=self.camera_config['aspect'], 
-            near=self.camera_config['near'], 
-            far=self.camera_config['far']
+            fov=self.camera_config['fov'],
+            aspect=self.camera_config['aspect'],
+            near=self.camera_config['near'],
+            far=self.camera_config['far'],
         )
 
         # Generate point cloud with color
@@ -563,7 +558,7 @@ class TossObjects(BaseScene):
     def check_grasp_success(self):
         grasp_success = not self.robot._is_gripper_closed()
         if grasp_success:
-            post_grasp_height = self.robot_config['post_grasp_pose'][0][2]
+            post_grasp_height = self.post_grasp_pose[0][2]
             object_ids = [
                 object_id for object_id in self.object_ids 
                 if self.get_object_pose(object_id)[0][2] > post_grasp_height - 0.1

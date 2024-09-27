@@ -88,7 +88,7 @@ class Panda(BaseRobot):
         """
         self.set_gripper_position_target([self.gripper_range[0], self.gripper_range[0]])
 
-    def _is_gripper_open(self, tolerance=2e-3, open_threshold=None):
+    def _is_gripper_open(self, tolerance=1e-4, open_threshold=None):
         """
         Check if the gripper is open enough based on a specified threshold.
         

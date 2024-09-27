@@ -451,7 +451,7 @@ class BaseRobot:
 
         return False  # Grasping process not yet complete
 
-    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=1.0, count_threshold=20, max_delta_velocity=0.1):
+    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=5.0, count_threshold=20, max_delta_velocity=0.1):
         """
         Perform a throwing action with three stages: 
         1. Move to the release point with a target velocity while correcting deviations.
@@ -463,7 +463,8 @@ class BaseRobot:
             tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
             correction_gain (float): Gain for correcting the deviation from the target pose.
             count_threshold (int): Number of consecutive times distance increases before moving to the next step.
-            
+            max_delta_velocity (float): Max delta velocity when accelerating to the tcp target velocity.
+
         Returns:
             bool: True if the throwing process is completed, False otherwise.
         """
@@ -526,7 +527,7 @@ class BaseRobot:
             # Check if position error and velocity error is small enough to move to the next stage
             if np.linalg.norm(position_error) < 0.05 and np.linalg.norm(linear_velocity_error) < 0.1 * np.linalg.norm(self.tcp_target_velocity[0]):
                 self._throw_step = 1
-                self._open_threshold = max(self.get_gripper_position()) + 0.005
+                self._open_threshold = max(self.get_gripper_position()) + 0.002
                 del self._prev_distance_to_target
                 del self._dist_increase_counter
 
@@ -546,7 +547,7 @@ class BaseRobot:
             self.set_arm_joint_velocity_target(joint_velocities)
 
             self.open_gripper()
-            if self._is_gripper_open(self._open_threshold):
+            if self._is_gripper_open(open_threshold=self._open_threshold):
                 self._throw_step = 2
                 return False  # Throwing not yet complete
 
