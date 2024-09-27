@@ -300,15 +300,17 @@ class TossObjects(BaseScene):
             )
 
     ############### Reset ###############
-    def reset_robot(self):
+    def reset_robot(self, init=False):
         """
         Reset the robot's position.
         """
         self.robot.reset()
-        self.grasp_completed = False
-        self.throw_completed = False
 
-    def reset_objects(self, margin=0.1):
+        if init:
+            self.grasp_completed = False
+            self.throw_completed = False
+
+    def reset_objects(self, init=False, margin=0.1):
         """
         Randomly place objects in the workspace.
         """
@@ -350,11 +352,13 @@ class TossObjects(BaseScene):
 
         return None
 
-    def reset_task(self):
+    def reset_task(self, init=False):
         self.select_target_box()
-        self.grasp_success = False
-        self.grasped_object_id = None
-        self.throw_success = False
+
+        if init:
+            self.grasp_success = False
+            self.throw_success = False
+            self.grasped_object_id = None
 
     ############### Step ###############
     def pre_simulation_process(self, action):
@@ -383,6 +387,8 @@ class TossObjects(BaseScene):
     def post_simulation_process(self, completed_and_static):
         if completed_and_static and self.does_workspace_need_reset():
             self.reset_objects()
+
+        self.select_target_box()
 
         self.grasp_completed = False
         self.throw_completed = False

@@ -68,30 +68,30 @@ class BaseScene:
         """
         Resets the robot and objects in the scene. Calls reset methods that should be implemented by subclasses.
         """
-        self.reset_robot()
-        self.reset_objects()
-        self.reset_task()
+        self.reset_robot(init=True)
+        self.reset_objects(init=True)
+        self.reset_task(init=True)
 
         obs = self.get_observation()
         info = self.get_info()
 
         return obs, info
 
-    def reset_robot(self):
+    def reset_robot(self, init=False):
         """
         Abstract method to reset the robot to its initial state.
         Should be implemented by subclasses.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
-    def reset_objects(self):
+    def reset_objects(self, init=False):
         """
         Abstract method to reset or reload objects in the scene.
         Should be implemented by subclasses.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
-    def reset_task(self):
+    def reset_task(self, init=False):
         """
         Abstract method to reset the task-related parameters in the scene.
         Should be implemented by subclasses.
@@ -116,6 +116,7 @@ class BaseScene:
             self.simulation_step()
             self.post_simulation_step()
         self.post_simulation_process(completed_and_static)
+
         next_obs = self.get_observation()
         reward = self.get_reward()
         terminated = self.is_terminated()
