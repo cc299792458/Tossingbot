@@ -8,11 +8,13 @@ from tossingbot.envs.pybullet.robot.base_robot import BaseRobot
 from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_sphere, create_plane
 
 class Panda(BaseRobot):
-    def __init__(self, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
+    def __init__(self, timestep, control_timestep, base_position, base_orientation, initial_position=None, visualize_coordinate_frames=False):
         """
         Initialize the Panda robot with default or custom initial joint positions.
 
         Args:
+            timestep (float): Simulation time step.
+            control_timestep (float): Control time step.
             base_position (tuple): The position of the robot's base.
             base_orientation (tuple): The orientation of the robot's base.
             initial_position (list or None): A list of joint positions to initialize the robot. 
@@ -30,7 +32,7 @@ class Panda(BaseRobot):
 
         self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
 
-        super().__init__(base_position, base_orientation, robot_type='panda')
+        super().__init__(timestep, control_timestep, base_position, base_orientation, robot_type='panda')
 
         if visualize_coordinate_frames:
             self.visualize_coordinate_frames(links_to_visualize=['tcp_link'])
@@ -164,7 +166,7 @@ if __name__ == '__main__':
     p.setGravity(0, 0, -9.8)
 
     # Create Panda robot
-    robot = Panda((0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
+    robot = Panda(1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0), visualize_coordinate_frames=True)
     create_plane()
     position = [0.3, -0.3, 0.03]    
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
@@ -183,8 +185,9 @@ if __name__ == '__main__':
             grasp_completed = robot.grasp(tcp_target_pose=grasp_pose, post_grasp_pose=post_grasp_pose)
         elif not throw_completed:
             throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
-        p.stepSimulation()
-        time.sleep(1./240.)
+        for _ in range(240 // 20):
+            p.stepSimulation()
+            time.sleep(1./240.)
         robot.visualize_tcp_trajectory()
 
     p.disconnect()

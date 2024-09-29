@@ -5,16 +5,20 @@ import pybullet_data
 import pybullet as p
 
 class BaseScene:
-    def __init__(self, timestep=1/240, gravity=-9.81, use_gui=True):
+    def __init__(self, timestep=1/240, control_timestep=1/20, gravity=-9.81, use_gui=True):
         """
         Initialize the base simulation scene.
 
         Args:
             timestep (float): Time step for the simulation.
+            control_timestep (float): Control time step for the robot.
             gravity (float): Gravity applied to the scene.
             use_gui (bool): Whether to run the simulation in GUI mode or headless mode.
         """
         self.timestep = timestep
+        self.control_timestep = control_timestep
+        self.sim_step_per_ctrl_step = control_timestep // timestep
+        
         self.gravity = gravity
         self.use_gui = use_gui
 

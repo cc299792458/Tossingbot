@@ -10,10 +10,12 @@ class BaseRobot:
     The base class for robots
     """
 
-    def __init__(self, base_position, base_orientation, robot_type='panda'):
+    def __init__(self, timestep, control_timestep, base_position, base_orientation, robot_type='panda'):
         """
         Initialize the robot with its base position, orientation, and type.
         """
+        self.timestep = timestep
+        self.control_timestep = control_timestep
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
         self.links = {}  # Store link information
@@ -677,8 +679,8 @@ class BaseRobot:
         distance = np.linalg.norm(target_pos - start_pos)
         time_estimate = distance / estimate_speed
         
-        # Compute the number of steps based on PyBullet's simulation step size (1/240 seconds)
-        num_steps = int(time_estimate / (1/240))
+        # Compute the number of steps based on control step size (defalult 1/20 seconds)
+        num_steps = int(time_estimate / self.control_timestep)
         
         # Generate quintic polynomial trajectory for linear positions and velocities
         pos_trajectory, vel_trajectory = self._generate_quintic_trajectory(
