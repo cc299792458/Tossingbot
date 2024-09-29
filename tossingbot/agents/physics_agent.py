@@ -192,10 +192,10 @@ class PhysicsAgent(BaseAgent):
 
         # Define the post-grasp pose
         post_grasp_pose = ([self.post_grasp_h * np.cos(theta), self.post_grasp_h * np.sin(theta), self.post_grasp_z],
-                           [1.0, 0.0, 0.0, 0.0])
+                           [0.0, 0.0, 0.0, 1.0])
 
         # Define the throwing pose and velocity
-        throw_pose = ([r_x, r_y, r_z], [1.0, 0.0, 0.0, 0.0])
+        throw_pose = ([r_x, r_y, r_z], [0.0, 0.0, 0.0, 1.0])
         throw_velocity = ([v_x, v_y, v_z], [0.0, 0.0, 0.0])
 
         # Return intermediate values and predictions

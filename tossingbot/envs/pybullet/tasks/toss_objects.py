@@ -5,6 +5,7 @@ import pybullet as p
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
 from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
+from tossingbot.envs.pybullet.utils.math_utils import yaw_to_quaternion
 from tossingbot.envs.pybullet.utils.objects_utils import (
     create_sphere,
     create_box, 
@@ -379,7 +380,7 @@ class TossObjects(BaseScene):
         grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
 
         # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
-        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], [1.0, 0.0, 0.0, 0.0])  # Grasp pose with quaternion representation
+        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
         self.post_grasp_pose = post_grasp_pose
         self.throw_pose = throw_pose
         self.throw_velocity = throw_velocity

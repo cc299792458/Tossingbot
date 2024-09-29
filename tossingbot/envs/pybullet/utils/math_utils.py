@@ -3,6 +3,8 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
+from scipy.spatial.transform import Rotation as R
+
 def slerp(q0, q1, t_array):
     # Ensure inputs are unit quaternions
     q0 = q0 / np.linalg.norm(q0)
@@ -24,7 +26,6 @@ def slerp(q0, q1, t_array):
         (np.sin(t * theta_0) / sin_theta_0) * q1
         for t in t_array
     ])
-
 
 def pose_distance(pose1, pose2):
     """
@@ -93,6 +94,24 @@ def rotation_matrix_to_quaternion(rotation_matrix):
         qx = (R[0, 2] + R[2, 0]) / s
         qy = (R[1, 2] + R[2, 1]) / s
         qz = 0.25 * s
+
+    return [qx, qy, qz, qw]
+
+def yaw_to_quaternion(yaw):
+    """
+    Convert a yaw angle (in radians) to a quaternion (qx, qy, qz, qw).
+
+    Args:
+        yaw (float): The yaw angle in radians.
+
+    Returns:
+        tuple: A tuple representing the quaternion (qx, qy, qz, qw).
+    """
+    # Create a rotation object using the yaw angle (rotation around z-axis)
+    r = R.from_euler('z', yaw)
+
+    # Convert the rotation object to quaternion format (qx, qy, qz, qw)
+    qx, qy, qz, qw = r.as_quat()
 
     return [qx, qy, qz, qw]
 
