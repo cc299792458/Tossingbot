@@ -66,6 +66,7 @@ class Panda(BaseRobot):
                 force=self.joints[joint_id].max_force,
                 maxVelocity=self.joints[joint_id].max_velocity
             )
+        super().set_gripper_position_target(target_position=target_position)
 
     def get_gripper_position(self):
         """
@@ -185,9 +186,12 @@ if __name__ == '__main__':
             grasp_completed = robot.grasp(tcp_target_pose=grasp_pose, post_grasp_pose=post_grasp_pose)
         elif not throw_completed:
             throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
+        else:
+            robot.plot_log_variables()
         for _ in range(240 // 20):
             p.stepSimulation()
             time.sleep(1./240.)
+            robot.log_variables()
         robot.visualize_tcp_trajectory()
 
     p.disconnect()

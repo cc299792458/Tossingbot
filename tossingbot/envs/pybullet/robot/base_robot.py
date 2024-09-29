@@ -19,10 +19,31 @@ class BaseRobot:
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
         self.links = {}  # Store link information
+        self.initialize_logs()
         self.robot_type = robot_type
         assert robot_type in ['ur5_robotiq85', 'panda'], "robot_type must be 'ur5_robotiq85' or 'panda'"
         self.load_robot()
         self.reset()
+    
+    ###############  initialize logs ###############
+    def initialize_logs(self):
+        # List of log attribute names
+        log_attrs = [
+            'joint_position_log',
+            'joint_velocity_log',
+            'target_joint_position_log',
+            'target_joint_velocity_log',
+            'tcp_pose_log',
+            'tcp_velocity_log',
+            'target_tcp_pose_log',
+            'target_tcp_velocity_log',
+            'gripper_position_log',
+            'target_gripper_position_log',
+        ]
+        
+        # Initialize logs
+        for attr in log_attrs:
+            setattr(self, attr, [])
 
     ###############  load robot ###############
     def load_robot(self):
@@ -163,6 +184,9 @@ class BaseRobot:
             force=self.joints[joint_id].max_force,
             maxVelocity=self.joints[joint_id].max_velocity
         )
+        self.joint_target_position = target_position
+        if target_velocity is not None:
+            self.joint_target_velocity = target_velocity
 
     def set_arm_joint_velocity_target(self, target_velocity):
         """
@@ -344,8 +368,8 @@ class BaseRobot:
     def set_gripper_position(self):
         raise NotImplementedError
     
-    def set_gripper_position_target(self):
-        raise NotImplementedError
+    def set_gripper_position_target(self, target_position):
+        self.gripper_target_position = target_position
     
     def get_gripper_position(self):
         raise NotImplementedError
@@ -563,7 +587,6 @@ class BaseRobot:
                 return True  # Throwing process complete
 
         return False  # Throwing process not yet complete
-
 
     # def throw(self, tcp_target_pose, tcp_target_velocity, estimate_speed=0.5):
     #     """
@@ -869,3 +892,20 @@ class BaseRobot:
         p.addUserDebugLine(self._prev_tcp_pose[0], current_pose[0], color_actual, line_duration)
         self._prev_tcp_pose = current_pose
     
+    ############### log ###############
+    def log_variables(self):
+        # Append current values to logs
+        self.joint_position_log.append(self.get_arm_joint_position())
+        self.joint_velocity_log.append(self.get_arm_joint_velocity())
+        self.target_joint_position_log.append(self.joint_target_position)
+        self.target_joint_velocity_log.append(self.joint_target_velocity)
+        self.tcp_pose_log.append(self.get_tcp_pose())
+        self.tcp_velocity_log.append(self.get_tcp_velocity())
+        self.target_tcp_pose_log.append(self.tcp_target_pose)
+        self.target_tcp_velocity_log.append(self.tcp_target_velocity)
+        self.gripper_position_log.append(self.get_gripper_position())
+        self.target_gripper_position_log.append(self.gripper_target_position)
+
+    ############### plot ###############
+    def plot_log_variables(self):
+        pass
