@@ -912,28 +912,28 @@ class BaseRobot:
         Plot selected variables from the log. If no specific variables are provided, all logs will be plotted.
 
         Args:
-            variables (list): List of variables to plot. Possible values are 'arm_joint', 'tcp', 'gripper'.
+            variables (list): List of variables to plot. Possible values are 'arm_joint_position', 'arm_joint_velocity', 'tcp_position', 'tcp_velocity', 'gripper_position'.
         """
-        # plt.ion()
-        
         if variables is None:
-            variables = ['arm_joint', 'tcp', 'gripper']  # Plot all if no specific selection
+            variables = ['arm_joint_position', 'arm_joint_velocity', 'tcp_position', 'tcp_velocity', 'gripper_position']  # Plot all if no specific selection
 
-        if 'arm_joint' in variables:
-            self.plot_log_arm_joint()
-        if 'tcp' in variables:
-            self.plot_log_tcp()
-        if 'gripper' in variables:
-            self.plot_log_gripper()
+        if 'arm_joint_position' in variables:
+            self.plot_arm_joint_position()
+        if 'arm_joint_velocity' in variables:
+            self.plot_arm_joint_velocity()
+        if 'tcp_position' in variables:
+            self.plot_tcp_position()
+        if 'tcp_velocity' in variables:
+            self.plot_tcp_velocity()
+        if 'gripper_position' in variables:
+            self.plot_gripper_position()
 
         # After all plots are created, show them together
-        plt.tight_layout()
-        plt.pause(0.001)
         plt.show()
 
-    def plot_log_arm_joint(self):
+    def plot_arm_joint_position(self):
         """
-        Plot the arm's joint-related variables over time, including both actual and target values.
+        Plot the arm's joint-related position variables over time, including both actual and target values.
         """
         num_joints = self.num_arm_dofs  # Number of joints to plot
         timesteps = np.arange(len(self.joint_position_log)) * self.timestep  # Convert to actual time
@@ -959,14 +959,47 @@ class BaseRobot:
             axes[i].set_title(f'Arm Joint {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
-            axes[i].legend()
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
         plt.pause(0.001)
 
-    def plot_log_tcp(self):
+    def plot_arm_joint_velocity(self):
         """
-        Plot the TCP-related variables over time, including both actual and target values.
+        Plot the arm's joint-related velocity variables over time, including both actual and target values.
+        """
+        num_joints = self.num_arm_dofs  # Number of joints to plot
+        timesteps = np.arange(len(self.joint_velocity_log)) * self.timestep  # Convert to actual time
+
+        fig, axes = plt.subplots(nrows=num_joints, ncols=1, figsize=(10, 1.5*num_joints))
+
+        # Add a general title for the figure
+        fig.suptitle('Arm Joint Velocities Over Time', fontsize=16)
+
+        # If there's only one joint, ensure axes is iterable
+        if num_joints == 1:
+            axes = [axes]
+
+        for i in range(num_joints):
+            # Plot actual joint velocity
+            actual_joint_velocities = [log[i] for log in self.joint_velocity_log]
+            axes[i].plot(timesteps, actual_joint_velocities, label=f'Joint {i} Velocity', linestyle='-', color='red')
+
+            # Plot target joint velocity
+            target_joint_velocities = [log[i] for log in self.target_joint_velocity_log]
+            axes[i].plot(timesteps, target_joint_velocities, label=f'Joint {i} Target Velocity', linestyle='--', color='green')
+
+            axes[i].set_title(f'Arm Joint {i} Velocity')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Velocity')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+        plt.pause(0.001)
+
+    def plot_tcp_position(self):
+        """
+        Plot the TCP-related position variables over time, including both actual and target values.
         """
         timesteps = np.arange(len(self.tcp_pose_log)) * self.timestep  # Convert to actual time
 
@@ -991,7 +1024,7 @@ class BaseRobot:
             axes[i].set_title(f'TCP {position_labels[i]} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel(f'{position_labels[i]} Position')
-            axes[i].legend()
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         # Plot orientations: roll, pitch, yaw
         orientation_labels = ['Roll', 'Pitch', 'Yaw']
@@ -1001,14 +1034,56 @@ class BaseRobot:
             axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
             axes[i + 3].set_xlabel('Time (s)')
             axes[i + 3].set_ylabel(f'{orientation_labels[i]} (degrees)')
-            axes[i + 3].legend()
+            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
         plt.pause(0.001)
 
-    def plot_log_gripper(self):
+    def plot_tcp_velocity(self):
         """
-        Plot the gripper-related variables over time, including both actual and target values.
+        Plot the TCP-related velocity variables over time, including both actual and target values.
+        """
+        timesteps = np.arange(len(self.tcp_velocity_log)) * self.timestep  # Convert to actual time
+
+        # Extract linear and angular velocities from tcp_velocity_log and target_tcp_velocity_log
+        actual_linear_velocities = np.array([log[0] for log in self.tcp_velocity_log])
+        actual_angular_velocities = np.array([log[1] for log in self.tcp_velocity_log])
+
+        target_linear_velocities = np.array([log[0] for log in self.target_tcp_velocity_log])
+        target_angular_velocities = np.array([log[1] for log in self.target_tcp_velocity_log])
+
+        # Create subplots for linear (vx, vy, vz) and angular (wx, wy, wz) velocities
+        fig, axes = plt.subplots(nrows=6, ncols=1, figsize=(10, 9))  # 3 for linear velocity and 3 for angular velocity
+
+        # Add a general title for the figure
+        fig.suptitle('TCP Velocities Over Time', fontsize=16)
+
+        # Plot linear velocities: vx, vy, vz
+        linear_velocity_labels = ['Vx', 'Vy', 'Vz']
+        for i in range(3):
+            axes[i].plot(timesteps, actual_linear_velocities[:, i], label=f'Actual {linear_velocity_labels[i]}', linestyle='-', color='red')
+            axes[i].plot(timesteps, target_linear_velocities[:, i], label=f'Target {linear_velocity_labels[i]}', linestyle='--', color='green')
+            axes[i].set_title(f'TCP {linear_velocity_labels[i]}')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel(f'{linear_velocity_labels[i]} (m/s)')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+        # Plot angular velocities: wx, wy, wz
+        angular_velocity_labels = ['Wx', 'Wy', 'Wz']
+        for i in range(3):
+            axes[i + 3].plot(timesteps, actual_angular_velocities[:, i], label=f'Actual {angular_velocity_labels[i]}', linestyle='-', color='red')
+            axes[i + 3].plot(timesteps, target_angular_velocities[:, i], label=f'Target {angular_velocity_labels[i]}', linestyle='--', color='green')
+            axes[i + 3].set_title(f'TCP {angular_velocity_labels[i]}')
+            axes[i + 3].set_xlabel('Time (s)')
+            axes[i + 3].set_ylabel(f'{angular_velocity_labels[i]} (rad/s)')
+            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+        plt.pause(0.001)
+
+    def plot_gripper_position(self):
+        """
+        Plot the gripper-related position variables over time, including both actual and target values.
         This function supports any number of gripper DOFs (degrees of freedom).
         """
         num_dofs = self.num_gripper_dofs  # Number of gripper DOFs
@@ -1038,7 +1113,7 @@ class BaseRobot:
             axes[i].set_title(f'Gripper DOF {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
-            axes[i].legend()
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
         plt.pause(0.001)
