@@ -86,6 +86,7 @@ class TossObjects(BaseScene):
         default_robot_config = {
             "base_position": [0.0, 0.0, 0.0],
             "base_orientation": [0.0, 0.0, 0.0],
+            "gripper_control_mode": 'torque',
             "robot_type": 'panda',
             "visualize_coordinate_frames": use_gui and self.visualize_config['visualize_coordinate_frames'],
         }
@@ -299,6 +300,7 @@ class TossObjects(BaseScene):
                 control_timestep=self.control_timestep,
                 base_position=self.robot_config['base_position'],
                 base_orientation=self.robot_config['base_orientation'],
+                gripper_control_mode=self.robot_config['gripper_control_mode'],
                 visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
             )
 
@@ -429,6 +431,8 @@ class TossObjects(BaseScene):
         pass
 
     def post_simulation_step(self):
+        if self.robot_config['gripper_control_mode'] == 'torque':
+            self.robot.keep_gripper_force()
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
             rgb_img, depth_img, point_cloud, colors, \
             color_heightmap, depth_heightmap, \

@@ -11,7 +11,7 @@ class BaseRobot:
     The base class for robots
     """
 
-    def __init__(self, timestep, control_timestep, base_position, base_orientation, robot_type='panda'):
+    def __init__(self, timestep, control_timestep, base_position, base_orientation, gripper_control_mode='torque', robot_type='panda'):
         """
         Initialize the robot with its base position, orientation, and type.
         """
@@ -19,6 +19,8 @@ class BaseRobot:
         self.control_timestep = control_timestep
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
+        assert gripper_control_mode == 'position' or 'torque'
+        self.gripper_control_mode = gripper_control_mode
         self.links = {}  # Store link information
         self.initialize_logs()
         self.robot_type = robot_type
@@ -381,6 +383,15 @@ class BaseRobot:
     def get_gripper_force(self):
         raise NotImplementedError
     
+    def keep_gripper_force(self):
+        """
+        Keep the gripper force in every PyBullet simulation step.
+
+        This method must be called in each simulation step to apply the correct force 
+        based on the control strategy (e.g., position error or impedance control).
+        """
+        raise NotImplementedError
+    
     def open_gripper(self):
         raise NotImplementedError
     
@@ -395,7 +406,8 @@ class BaseRobot:
     
     def _is_gripper_stopped(self):
         raise NotImplementedError
-
+        
+    ############### motion primitives ###############
     def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (1.0, 0.0, 0.0, 0.0))):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
@@ -452,7 +464,8 @@ class BaseRobot:
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
                 self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
-                self.open_gripper()
+                if self.gripper_control_mode == 'torque':
+                    self.open_gripper()
                 self._trajectory_index += 1
             else:
                 # Once reached the target, move to the next step (Step 4)
@@ -475,7 +488,8 @@ class BaseRobot:
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
                 self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
-                self.close_gripper()
+                if self.gripper_control_mode == 'torque':
+                    self.close_gripper()
                 self._trajectory_index += 1
             else:
                 # Once reached, the grasping process is complete
