@@ -294,6 +294,8 @@ class TossObjects(BaseScene):
             )
         elif self.robot_config['robot_type'] == 'panda':
             self.robot = Panda(
+                timestep=self.timestep,
+                control_timestep=self.control_timestep,
                 base_position=self.robot_config['base_position'],
                 base_orientation=self.robot_config['base_orientation'],
                 visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
@@ -395,7 +397,7 @@ class TossObjects(BaseScene):
                 return False
         return True
 
-    def pre_simulation_step(self, action):
+    def pre_control_step(self):
         is_action_finished = False
         
         if not self.grasp_completed:
@@ -418,6 +420,12 @@ class TossObjects(BaseScene):
                 are_objects_static = False
 
         return is_action_finished and are_objects_static
+
+    def post_control_step(self):
+        pass
+
+    def pre_simulation_step(self):
+        pass
 
     def post_simulation_step(self):
         if self.use_gui and self.visualize_config['visualize_visual_plots']:

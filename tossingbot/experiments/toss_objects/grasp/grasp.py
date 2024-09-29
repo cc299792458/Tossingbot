@@ -30,7 +30,7 @@ if __name__ == '__main__':
     n_rotations = 1
     phi_deg = 0
 
-    total_episodes = 100
+    total_episodes = 10_000
 
     # Env
     env = TossObjects(

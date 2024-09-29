@@ -5,7 +5,7 @@ import pybullet_data
 import pybullet as p
 
 class BaseScene:
-    def __init__(self, timestep=1/240, control_timestep=1/20, gravity=-9.81, use_gui=True):
+    def __init__(self, timestep=1./240., control_timestep=1./20., gravity=-9.81, use_gui=True):
         """
         Initialize the base simulation scene.
 
@@ -17,7 +17,7 @@ class BaseScene:
         """
         self.timestep = timestep
         self.control_timestep = control_timestep
-        self.sim_step_per_ctrl_step = control_timestep // timestep
+        self.sim_step_per_ctrl_step = int(control_timestep // timestep)
         
         self.gravity = gravity
         self.use_gui = use_gui
@@ -112,9 +112,12 @@ class BaseScene:
         completed_and_static = False    # is action completed and are objects static
         self.pre_simulation_process(action)
         while not completed_and_static:
-            completed_and_static = self.pre_simulation_step(action)
-            self.simulation_step()
-            self.post_simulation_step()
+            completed_and_static = self.pre_control_step()
+            for _ in range(self.sim_step_per_ctrl_step):
+                self.pre_simulation_step()
+                self.simulation_step()
+                self.post_simulation_step()
+            self.post_control_step()
         self.post_simulation_process(completed_and_static)
 
         next_obs = self.get_observation()
@@ -141,7 +144,13 @@ class BaseScene:
     def post_simulation_process(self, completed_and_static):
         pass
 
-    def pre_simulation_step(self, action):
+    def pre_control_step(self):
+        pass
+
+    def post_control_step(self):
+        pass
+
+    def pre_simulation_step(self):
         pass
 
     def post_simulation_step(self):
