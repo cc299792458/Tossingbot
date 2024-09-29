@@ -1,4 +1,3 @@
-import math
 import time
 import numpy as np
 import pybullet as p
@@ -122,7 +121,7 @@ class Panda(BaseRobot):
         position_condition = max(self.get_gripper_position()[0] - self.gripper_range[0], self.get_gripper_position()[1] - self.gripper_range[0]) < tolerance
         return position_condition
 
-    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=10):
+    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=3):
         """
         Check if the gripper has stopped moving based on position change within a certain number of steps.
         

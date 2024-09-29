@@ -115,6 +115,24 @@ def yaw_to_quaternion(yaw):
 
     return [qx, qy, qz, qw]
 
+def quaternion_to_euler(qx, qy, qz, qw):
+    """
+    Convert a quaternion (qx, qy, qz, qw) to Euler angles (roll, pitch, yaw).
+    
+    Args:
+        qx, qy, qz, qw: Quaternion components.
+        
+    Returns:
+        euler_angles: A tuple of Euler angles (roll, pitch, yaw) in radians.
+    """
+    # Create a Rotation object from the quaternion
+    r = R.from_quat([qx, qy, qz, qw])
+
+    # Convert the quaternion to Euler angles
+    euler_angles = r.as_euler('xyz', degrees=True)  # 'xyz' can be changed to your preferred convention
+    
+    return euler_angles
+
 def rotate_image_array(image_array, theta):
     """
     Rotate a 2D array (such as an image or heightmap) by a specified angle.

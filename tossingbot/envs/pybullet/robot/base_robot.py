@@ -1,9 +1,10 @@
 import numpy as np
 import pybullet as p
+import matplotlib.pyplot as plt
 
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-from tossingbot.envs.pybullet.utils.math_utils import slerp, pose_distance
+from tossingbot.envs.pybullet.utils.math_utils import slerp, pose_distance, quaternion_to_euler
 
 class BaseRobot:
     """
@@ -146,8 +147,8 @@ class BaseRobot:
         """
         Reset the arm to its initial position.
         """
-        self.set_arm_joint_position(self.initial_position[0:self.num_arm_dofs])
-        self.set_arm_joint_position_target(self.initial_position[0:self.num_arm_dofs])
+        self.set_arm_joint_position(self.initial_position[:self.num_arm_dofs])
+        self.set_arm_joint_position_target(self.initial_position[:self.num_arm_dofs])
 
     def _reset_gripper(self):
         """
@@ -185,8 +186,7 @@ class BaseRobot:
             maxVelocity=self.joints[joint_id].max_velocity
         )
         self.joint_target_position = target_position
-        if target_velocity is not None:
-            self.joint_target_velocity = target_velocity
+        self.joint_target_velocity = target_velocity
 
     def set_arm_joint_velocity_target(self, target_velocity):
         """
@@ -477,7 +477,7 @@ class BaseRobot:
 
         return False  # Grasping process not yet complete
 
-    def throw(self, tcp_target_pose, tcp_target_velocity, correction_gain=5.0, count_threshold=20, max_delta_velocity=0.1):
+    def throw(self, tcp_target_pose, tcp_target_velocity, Kp=5.0, count_threshold=2, max_delta_velocity=1.0):
         """
         Perform a throwing action with three stages: 
         1. Move to the release point with a target velocity while correcting deviations.
@@ -487,7 +487,7 @@ class BaseRobot:
         Args:
             tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
             tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
-            correction_gain (float): Gain for correcting the deviation from the target pose.
+            Kp (float): Gain for correcting the deviation from the target pose.
             count_threshold (int): Number of consecutive times distance increases before moving to the next step.
             max_delta_velocity (float): Max delta velocity when accelerating to the tcp target velocity.
 
@@ -524,8 +524,8 @@ class BaseRobot:
             orientation_error_axis_angle = (target_orientation * current_orientation.inv()).as_rotvec()
 
             # Apply corrections to linear and angular velocities
-            corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + correction_gain * position_error
-            corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + correction_gain * orientation_error_axis_angle
+            corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + Kp * position_error
+            corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + Kp * orientation_error_axis_angle
 
             # Increase the velocity gradually to avoid excessive acceleration
             current_linear_velocity, current_angular_velocity = self.get_tcp_velocity()
@@ -901,11 +901,144 @@ class BaseRobot:
         self.target_joint_velocity_log.append(self.joint_target_velocity)
         self.tcp_pose_log.append(self.get_tcp_pose())
         self.tcp_velocity_log.append(self.get_tcp_velocity())
-        self.target_tcp_pose_log.append(self.tcp_target_pose)
-        self.target_tcp_velocity_log.append(self.tcp_target_velocity)
+        self.target_tcp_pose_log.append(self._tcp_target_pose)
+        self.target_tcp_velocity_log.append(self._tcp_target_pose)
         self.gripper_position_log.append(self.get_gripper_position())
         self.target_gripper_position_log.append(self.gripper_target_position)
 
     ############### plot ###############
-    def plot_log_variables(self):
-        pass
+    def plot_log_variables(self, variables=None):
+        """
+        Plot selected variables from the log. If no specific variables are provided, all logs will be plotted.
+
+        Args:
+            variables (list): List of variables to plot. Possible values are 'arm_joint', 'tcp', 'gripper'.
+        """
+        # plt.ion()
+        
+        if variables is None:
+            variables = ['arm_joint', 'tcp', 'gripper']  # Plot all if no specific selection
+
+        if 'arm_joint' in variables:
+            self.plot_log_arm_joint()
+        if 'tcp' in variables:
+            self.plot_log_tcp()
+        if 'gripper' in variables:
+            self.plot_log_gripper()
+
+        # After all plots are created, show them together
+        plt.tight_layout()
+        plt.pause(0.001)
+        plt.show()
+
+    def plot_log_arm_joint(self):
+        """
+        Plot the arm's joint-related variables over time, including both actual and target values.
+        """
+        num_joints = self.num_arm_dofs  # Number of joints to plot
+        timesteps = np.arange(len(self.joint_position_log)) * self.timestep  # Convert to actual time
+
+        fig, axes = plt.subplots(nrows=num_joints, ncols=1, figsize=(10, 1.5*num_joints))
+
+        # Add a general title for the figure
+        fig.suptitle('Arm Joint Positions Over Time', fontsize=16)
+
+        # If there's only one joint, ensure axes is iterable
+        if num_joints == 1:
+            axes = [axes]
+
+        for i in range(num_joints):
+            # Plot actual joint position
+            actual_joint_positions = [log[i] for log in self.joint_position_log]
+            axes[i].plot(timesteps, actual_joint_positions, label=f'Joint {i} Position', linestyle='-', color='red')
+
+            # Plot target joint position
+            target_joint_positions = [log[i] for log in self.target_joint_position_log]
+            axes[i].plot(timesteps, target_joint_positions, label=f'Joint {i} Target Position', linestyle='--', color='green')
+
+            axes[i].set_title(f'Arm Joint {i} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Position')
+            axes[i].legend()
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+        plt.pause(0.001)
+
+    def plot_log_tcp(self):
+        """
+        Plot the TCP-related variables over time, including both actual and target values.
+        """
+        timesteps = np.arange(len(self.tcp_pose_log)) * self.timestep  # Convert to actual time
+
+        # Extract position and orientation (Euler angles) from tcp_pose_log and target_tcp_pose_log
+        actual_positions = np.array([log[0] for log in self.tcp_pose_log])
+        actual_orientations = np.array([quaternion_to_euler(*log[1]) for log in self.tcp_pose_log])
+
+        target_positions = np.array([log[0] for log in self.target_tcp_pose_log])
+        target_orientations = np.array([quaternion_to_euler(*log[1]) for log in self.target_tcp_pose_log])
+
+        # Create subplots for position (x, y, z) and orientation (roll, pitch, yaw)
+        fig, axes = plt.subplots(nrows=6, ncols=1, figsize=(10, 9))  # 3 for position and 3 for orientation
+
+        # Add a general title for the figure
+        fig.suptitle('TCP Positions and Orientations Over Time', fontsize=16)
+
+        # Plot positions: x, y, z
+        position_labels = ['X', 'Y', 'Z']
+        for i in range(3):
+            axes[i].plot(timesteps, actual_positions[:, i], label=f'Actual {position_labels[i]} Position', linestyle='-', color='red')
+            axes[i].plot(timesteps, target_positions[:, i], label=f'Target {position_labels[i]} Position', linestyle='--', color='green')
+            axes[i].set_title(f'TCP {position_labels[i]} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel(f'{position_labels[i]} Position')
+            axes[i].legend()
+
+        # Plot orientations: roll, pitch, yaw
+        orientation_labels = ['Roll', 'Pitch', 'Yaw']
+        for i in range(3):
+            axes[i + 3].plot(timesteps, actual_orientations[:, i], label=f'Actual {orientation_labels[i]}', linestyle='-', color='red')
+            axes[i + 3].plot(timesteps, target_orientations[:, i], label=f'Target {orientation_labels[i]}', linestyle='--', color='green')
+            axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
+            axes[i + 3].set_xlabel('Time (s)')
+            axes[i + 3].set_ylabel(f'{orientation_labels[i]} (degrees)')
+            axes[i + 3].legend()
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+        plt.pause(0.001)
+
+    def plot_log_gripper(self):
+        """
+        Plot the gripper-related variables over time, including both actual and target values.
+        This function supports any number of gripper DOFs (degrees of freedom).
+        """
+        num_dofs = self.num_gripper_dofs  # Number of gripper DOFs
+        timesteps = np.arange(len(self.gripper_position_log)) * self.timestep  # Convert to actual time
+
+        # Extract gripper positions from logs
+        actual_gripper_positions = np.array(self.gripper_position_log)  # Shape: (T, num_dofs)
+        target_gripper_positions = np.array(self.target_gripper_position_log)  # Shape: (T, num_dofs)
+
+        # Create subplots for each gripper DOF
+        fig, axes = plt.subplots(nrows=num_dofs, ncols=1, figsize=(10, 1.5*num_dofs))
+
+        # Add a general title for the figure
+        fig.suptitle('Gripper DOF Positions Over Time', fontsize=16)
+
+        # If there's only one gripper DOF, ensure axes is iterable
+        if num_dofs == 1:
+            axes = [axes]
+
+        for i in range(num_dofs):
+            # Plot actual gripper position for the i-th DOF
+            axes[i].plot(timesteps, actual_gripper_positions[:, i], label=f'Gripper DOF {i} Position', linestyle='-', color='red')
+
+            # Plot target gripper position for the i-th DOF
+            axes[i].plot(timesteps, target_gripper_positions[:, i], label=f'Gripper DOF {i} Target Position', linestyle='--', color='green')
+
+            axes[i].set_title(f'Gripper DOF {i} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Position')
+            axes[i].legend()
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+        plt.pause(0.001)
