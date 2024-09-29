@@ -80,6 +80,7 @@ class PhysicsAgent(BaseAgent):
             post_grasp_h: float = 0.3,
             post_grasp_z: float = 0.4,
             epsilons: list[float] = [0.5, 0.1],
+            total_episodes: int = 10000,  # Add total episodes for scheduling
         ):
         """
         Initialize the PhysicsAgent for TossingBot, inheriting from BaseAgent.
@@ -96,40 +97,12 @@ class PhysicsAgent(BaseAgent):
             post_grasp_z (float): Height for the post-grasp pose.
             epsilons (list[float]): Epsilon values for exploration.
         """
-        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons)
+        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons, total_episodes)
         self.physics_controller = physics_controller
         self.post_grasp_h = post_grasp_h
         self.post_grasp_z = post_grasp_z
 
-    def forward(self, I, v):
-        """
-        Forward pass to predict grasping and throwing parameters.
-
-        Args:
-            I (torch.Tensor): Visual observation (e.g., image or feature map).
-            v (float): Predicted velocity given by physics controller.
-            
-        Returns:
-            tuple: Predicted grasping parameters (q_g) and throwing parameters (q_t).
-        """
-        # Step 1: Process the visual input using the perception module to extract visual features (mu)
-        mu = self.perception_module(I)
-
-        # Step 2: Concatenate the visual features with the predicted velocity
-        B, _, H, W = mu.shape
-        assert B == 1, "Batch size must be 1"
-        
-        # Create a velocity image with the same spatial dimensions as mu and concatenate it
-        velocity_image = torch.full((B, 128, H, W), v, device=self.device)
-        fused_features = torch.cat([mu, velocity_image], dim=1)  # Concatenating along the channel dimension
-
-        # Step 3: Predict the grasping probability map (q_g) and throwing probability map (q_t)
-        q_g = self.grasping_module(fused_features)
-        q_t = self.throwing_module(fused_features)
-
-        return q_g, q_t
-    
-    def predict(self, observation, n_rotations=16, phi_deg=45):
+    def predict(self, observation, n_rotations=16, phi_deg=45, episode_num=None):
         """
         Predict the best grasping and throwing actions based on the observation.
 
@@ -137,16 +110,19 @@ class PhysicsAgent(BaseAgent):
             observation (tuple): Observation consisting of an image (I) and the target position (p).
             n_rotations (int): Number of rotations to consider for grasping.
             phi_deg (float): Angle for throwing in degrees.
+            episode_num (int, optional): The current episode number for epsilon decay.
 
         Returns:
             tuple: (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity) and intermediate values.
         """
         I, p = observation
 
+        # Update epsilon value if episode number is provided
+        if episode_num is not None:
+            self.update_epsilon(episode_num)
+
         # Get throwing parameters from the physics controller
         (r_x, r_y, r_z), (v_x, v_y, v_z) = self.physics_controller.predict(target_pos=p, phi_deg=phi_deg)
-
-        # Calculate the throwing velocity magnitude
         v_magnitude = np.sqrt(v_x**2 + v_y**2 + v_z**2)
 
         grasp_logits = []  # Store network raw outputs (logits) for each rotation
@@ -174,40 +150,48 @@ class PhysicsAgent(BaseAgent):
             # Collect the network raw outputs (logits) for this rotation
             grasp_logits.append(q_g_rotated_back)
 
-        # Concatenate all grasp logits along the first dimension (n_rotations)
+        # Concatenate grasp logits and apply softmax to get grasp affordances
         concatenated_logits = torch.cat(grasp_logits, dim=0)
-
-        # Apply softmax to obtain the final grasp affordances (probabilities)
         grasp_affordances = F.softmax(concatenated_logits, dim=1)
-
-        # Detach and move to CPU for further processing
         grasp_affordances = grasp_affordances.detach().cpu().numpy()[:, 0, :, :]
 
-        # Find the index of the maximum value across the entire array
-        grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
+        # Epsilon-greedy exploration
+        if np.random.rand() < self.current_epsilon:
+            # Explore: randomly select a grasp pixel
+            grasp_pixel_index = (
+                np.random.randint(grasp_affordances.shape[0]),
+                np.random.randint(grasp_affordances.shape[1]),
+                np.random.randint(grasp_affordances.shape[2])
+            )
+        else:
+            # Exploit: select the pixel with the highest grasp affordance
+            grasp_pixel_index = np.unravel_index(np.argmax(grasp_affordances, axis=None), grasp_affordances.shape)
 
         # Calculate yaw angle for grasping
         target_x, target_y = p[0], p[1]
         theta = np.arctan2(target_y, target_x)
 
-        # Define the post-grasp pose
+        # Define post-grasp and throwing poses
         post_grasp_pose = ([self.post_grasp_h * np.cos(theta), self.post_grasp_h * np.sin(theta), self.post_grasp_z],
                            [0.0, 0.0, 0.0, 1.0])
-
-        # Define the throwing pose and velocity
         throw_pose = ([r_x, r_y, r_z], [0.0, 0.0, 0.0, 1.0])
         throw_velocity = ([v_x, v_y, v_z], [0.0, 0.0, 0.0])
 
-        # Return intermediate values and predictions
+        # Retain logits for loss computation
+        q_i_logits = q_g_tensor[grasp_pixel_index[0], :, grasp_pixel_index[1], grasp_pixel_index[2]]
+        delta_i = q_t_tensor[grasp_pixel_index[0], 0, grasp_pixel_index[1], grasp_pixel_index[2]]
+
+        # Store intermediate values
         intermediates = {
             "depth_heightmaps": depth_heightmaps, 
             "grasp_affordances": grasp_affordances,
             "q_g_tensor": q_g_tensor,
             "q_t_tensor": q_t_tensor,
-            "q_i_logits": q_g_tensor[grasp_pixel_index[0], :, grasp_pixel_index[1], grasp_pixel_index[2]],
-            "delta_i": q_t_tensor[grasp_pixel_index[0], 0, grasp_pixel_index[1], grasp_pixel_index[2]], 
+            "q_i_logits": q_i_logits,
+            "delta_i": delta_i,
         }
 
+        # Return action and intermediates
         return (grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity), intermediates
 
 ############### Visualization ###############

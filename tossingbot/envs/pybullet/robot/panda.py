@@ -297,7 +297,7 @@ if __name__ == '__main__':
         visualize_coordinate_frames=True
     )
     create_plane()
-    position = [0.3, -0.3, 0.03]    
+    position = [0.3, -0.3, 0.03]
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
     object_id = create_sphere(radius=0.03, position=position, mass=0.2)
     p.changeDynamics(object_id, -1, lateralFriction=1.0, rollingFriction=0.01)
