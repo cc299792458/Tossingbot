@@ -11,7 +11,15 @@ class BaseRobot:
     The base class for robots
     """
 
-    def __init__(self, timestep, control_timestep, base_position, base_orientation, gripper_control_mode='torque', robot_type='panda'):
+    def __init__(
+            self, 
+            timestep, 
+            control_timestep, 
+            base_position, 
+            base_orientation, 
+            gripper_control_mode='torque', 
+            use_gripper_gear=True,
+            robot_type='panda'):
         """
         Initialize the robot with its base position, orientation, and type.
         """
@@ -21,6 +29,7 @@ class BaseRobot:
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
         assert gripper_control_mode == 'position' or 'torque'
         self.gripper_control_mode = gripper_control_mode
+        self.use_gripper_gear = use_gripper_gear
         self.links = {}  # Store link information
         self.initialize_logs()
         self.robot_type = robot_type
@@ -433,7 +442,7 @@ class BaseRobot:
             self.tcp_target_pose = tcp_target_pose
 
             # Generate trajectory for moving to the position above the target
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.2)
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.5)
             self._trajectory_index = 0  # Initialize trajectory index
 
         # Step 1: Move to a position above the target
@@ -448,7 +457,7 @@ class BaseRobot:
                 self._grasp_step = 1
                 self._trajectory_index = 0  # Reset for the next trajectory
                 # Generate the next trajectory to move down to the target pose
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.2)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.5)
             return False  # Grasping process not yet complete
 
         # Step 2: Open the gripper
@@ -479,7 +488,7 @@ class BaseRobot:
             if self._is_gripper_stopped():  # Check if the gripper has finished moving
                 self._grasp_step = 4  # Move to the next step (post-grasp movement)
                 # Generate the trajectory to move to the post-grasp position (lifting up safely)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.2)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.5)
             return False  # Grasping process not yet complete
 
         # Step 5: Move to the post-grasp position

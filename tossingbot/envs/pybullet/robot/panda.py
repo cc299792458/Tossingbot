@@ -14,6 +14,7 @@ class Panda(BaseRobot):
             base_position, 
             base_orientation, 
             gripper_control_mode='torque', 
+            use_gripper_gear=True,
             initial_position=None, 
             visualize_coordinate_frames=False):
         """
@@ -25,6 +26,7 @@ class Panda(BaseRobot):
             base_position (tuple): The position of the robot's base.
             base_orientation (tuple): The orientation of the robot's base.
             gripper_control_mode (str): The control mode of the gripper, 'position' or 'torque'.
+            use_gripper_gear (bool): If add gear constraint to the gripper.
             initial_position (list or None): A list of joint positions to initialize the robot. 
                                              Defaults to a preset neutral pose if None.
             visualize_coordinate_frames (bool): If True, visualizes the coordinate frames for the robot.
@@ -52,10 +54,31 @@ class Panda(BaseRobot):
         self.gripper_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
 
     def _set_gripper_information(self):
-        self.max_force_factor = 0.2
         self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
         
+        if self.use_gripper_gear:
+            assert self.gripper_control_mode == 'position', "Gear must only be used in the position control mode."
+            # Assuming gripper_controllable_joints[0] is the left finger and gripper_controllable_joints[1] is the right finger
+            left_finger_joint = self.gripper_controllable_joints[0]
+            right_finger_joint = self.gripper_controllable_joints[1]
+            
+            # Create a gear constraint to synchronize the movement of the left and right fingers
+            self.gripper_constraint_id = p.createConstraint(
+                parentBodyUniqueId=self.robot_id,
+                parentLinkIndex=left_finger_joint,
+                childBodyUniqueId=self.robot_id,
+                childLinkIndex=right_finger_joint,
+                jointType=p.JOINT_GEAR,
+                jointAxis=[1, 0, 0],  # Specify the rotation axis
+                parentFramePosition=[0, 0, 0],
+                childFramePosition=[0, 0, 0]
+            )
+
+            # Set the gear ratio to -1 to ensure the left and right fingers move symmetrically in opposite directions
+            p.changeConstraint(self.gripper_constraint_id, gearRatio=-1)
+
         if self.gripper_control_mode == 'torque':
+            self.max_force_factor = 0.2
             # Calculate the proportional control coefficient kp
             self.gripper_kp, self.gripper_kd = [], []
             for joint_id in self.gripper_controllable_joints:
@@ -82,13 +105,26 @@ class Panda(BaseRobot):
         assert len(target_position) == self.num_gripper_dofs, "Target position length mismatch"
         
         if self.gripper_control_mode == 'position':
-            for joint_id, target_pos in zip(self.gripper_controllable_joints, target_position):
+            if self.use_gripper_gear:
+                assert target_position[0] == target_position[1], "Gear constraint requires the target positions of both gripper sides to be equal."
+                # Control only the left finger joint since the right one will follow due to the gear constraint
+                target_pos = target_position[0]  # Use only the first target position (for the left finger)
+                joint_id = self.gripper_controllable_joints[0]  # Control only the left finger joint
+                
                 p.setJointMotorControl2(
                     self.robot_id, joint_id, p.POSITION_CONTROL,
                     targetPosition=target_pos,
                     force=self.joints[joint_id].max_force,
                     maxVelocity=self.joints[joint_id].max_velocity
                 )
+            else:
+                for joint_id, target_pos in zip(self.gripper_controllable_joints, target_position):
+                    p.setJointMotorControl2(
+                        self.robot_id, joint_id, p.POSITION_CONTROL,
+                        targetPosition=target_pos,
+                        force=self.joints[joint_id].max_force,
+                        maxVelocity=self.joints[joint_id].max_velocity
+                    )
         elif self.gripper_control_mode == 'torque':
             # Get the current gripper position
             current_position = self.get_gripper_position()
@@ -253,7 +289,13 @@ if __name__ == '__main__':
 
     # Create Panda robot
     gripper_control_mode = 'position'
-    robot = Panda(1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0), gripper_control_mode='torque', visualize_coordinate_frames=True)
+    use_gripper_gear = True
+    robot = Panda(
+        1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
+        gripper_control_mode=gripper_control_mode, 
+        use_gripper_gear=use_gripper_gear, 
+        visualize_coordinate_frames=True
+    )
     create_plane()
     position = [0.3, -0.3, 0.03]    
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)

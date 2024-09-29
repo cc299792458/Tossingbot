@@ -86,7 +86,8 @@ class TossObjects(BaseScene):
         default_robot_config = {
             "base_position": [0.0, 0.0, 0.0],
             "base_orientation": [0.0, 0.0, 0.0],
-            "gripper_control_mode": 'torque',
+            "gripper_control_mode": 'position',
+            "use_gripper_gear": True,
             "robot_type": 'panda',
             "visualize_coordinate_frames": use_gui and self.visualize_config['visualize_coordinate_frames'],
         }
@@ -137,7 +138,7 @@ class TossObjects(BaseScene):
         })
         self.camera_config = default_camera_config
 
-        super().__init__(timestep=timestep, gravity=gravity, use_gui=use_gui)
+        super().__init__(timestep=timestep, control_timestep=control_timestep, gravity=gravity, use_gui=use_gui)
 
         # Collect heightmap dataset and calculate stats
         rgb_mean, rgb_std, depth_mean, depth_std = collect_heightmaps_and_stats(
@@ -301,6 +302,7 @@ class TossObjects(BaseScene):
                 base_position=self.robot_config['base_position'],
                 base_orientation=self.robot_config['base_orientation'],
                 gripper_control_mode=self.robot_config['gripper_control_mode'],
+                use_gripper_gear=self.robot_config['use_gripper_gear'],
                 visualize_coordinate_frames=self.robot_config['visualize_coordinate_frames'],
             )
 
