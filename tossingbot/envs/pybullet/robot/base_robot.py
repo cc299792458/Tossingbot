@@ -69,6 +69,7 @@ class BaseRobot:
         )
         self._parse_joint_information()
         self._store_link_information()
+        self._set_gripper_information()
 
     def _parse_joint_information(self):
         """
@@ -134,6 +135,9 @@ class BaseRobot:
             self.tcp_id = self.links.get('tcp_link', -1)
 
         assert self.tcp_id != -1, "TCP link not found for the robot"
+
+    def _set_gripper_information(self):
+        raise NotImplementedError
 
     ############### reset robot ###############
     def reset(self):
@@ -374,6 +378,9 @@ class BaseRobot:
     def get_gripper_position(self):
         raise NotImplementedError
     
+    def get_gripper_force(self):
+        raise NotImplementedError
+    
     def open_gripper(self):
         raise NotImplementedError
     
@@ -414,7 +421,7 @@ class BaseRobot:
             self.tcp_target_pose = tcp_target_pose
 
             # Generate trajectory for moving to the position above the target
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.5)
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.2)
             self._trajectory_index = 0  # Initialize trajectory index
 
         # Step 1: Move to a position above the target
@@ -429,7 +436,7 @@ class BaseRobot:
                 self._grasp_step = 1
                 self._trajectory_index = 0  # Reset for the next trajectory
                 # Generate the next trajectory to move down to the target pose
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.5)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.2)
             return False  # Grasping process not yet complete
 
         # Step 2: Open the gripper
@@ -445,6 +452,7 @@ class BaseRobot:
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
                 self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
+                self.open_gripper()
                 self._trajectory_index += 1
             else:
                 # Once reached the target, move to the next step (Step 4)
@@ -458,7 +466,7 @@ class BaseRobot:
             if self._is_gripper_stopped():  # Check if the gripper has finished moving
                 self._grasp_step = 4  # Move to the next step (post-grasp movement)
                 # Generate the trajectory to move to the post-grasp position (lifting up safely)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.5)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.2)
             return False  # Grasping process not yet complete
 
         # Step 5: Move to the post-grasp position
@@ -467,6 +475,7 @@ class BaseRobot:
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
                 self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
+                self.close_gripper()
                 self._trajectory_index += 1
             else:
                 # Once reached, the grasping process is complete

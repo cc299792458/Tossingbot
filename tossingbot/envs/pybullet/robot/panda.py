@@ -29,8 +29,6 @@ class Panda(BaseRobot):
             0.04, 0.04  # Gripper (open)
         ]
 
-        self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
-
         super().__init__(timestep, control_timestep, base_position, base_orientation, robot_type='panda')
 
         if visualize_coordinate_frames:
@@ -44,6 +42,16 @@ class Panda(BaseRobot):
         self.gripper_upper_limits = [info.upper_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
         self.gripper_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
 
+    def _set_gripper_information(self):
+        self.max_force_factor = 2
+        self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
+        
+        # Calculate the proportional control coefficient kp
+        self.gripper_kp = []
+        for joint_id in self.gripper_controllable_joints:
+            kp = self.joints[joint_id].max_force * self.max_force_factor / (self.gripper_range[1] - self.gripper_range[0])
+            self.gripper_kp.append(kp)
+
     ################## gripper #################
     def set_gripper_position(self, position):
         """
@@ -53,18 +61,49 @@ class Panda(BaseRobot):
         for joint_id, pos in zip(self.gripper_controllable_joints, position):
             p.resetJointState(self.robot_id, joint_id, pos)
 
+    # def set_gripper_position_target(self, target_position):
+    #     """
+    #     Set the target gripper position by calculating the corresponding joint angle.
+    #     """
+    #     assert len(target_position) == self.num_gripper_dofs, "Target position length mismatch"
+    #     for joint_id, target_pos in zip(self.gripper_controllable_joints, target_position):
+    #         p.setJointMotorControl2(
+    #             self.robot_id, joint_id, p.POSITION_CONTROL,
+    #             targetPosition=target_pos,
+    #             force=self.joints[joint_id].max_force,
+    #             maxVelocity=self.joints[joint_id].max_velocity
+    #         )
+    #     super().set_gripper_position_target(target_position=target_position)
+
     def set_gripper_position_target(self, target_position):
         """
-        Set the target gripper position by calculating the corresponding joint angle.
+        Set the target gripper position using force feedback control (P controller).
+        The applied force is proportional to the position error (delta_pos).
         """
         assert len(target_position) == self.num_gripper_dofs, "Target position length mismatch"
-        for joint_id, target_pos in zip(self.gripper_controllable_joints, target_position):
+
+        # Get the current gripper position
+        current_position = self.get_gripper_position()
+
+        # Iterate over each controllable gripper joint
+        for i, (joint_id, target_pos) in enumerate(zip(self.gripper_controllable_joints, target_position)):
+            
+            # Calculate the position error (delta_pos)
+            delta_pos = target_pos - current_position[i]
+
+            # Calculate the force to be applied based on the position error
+            applied_force = self.gripper_kp[i] * delta_pos
+
+            # Clamp the force to be within the allowed maximum and minimum limits
+            applied_force = np.clip(applied_force, -self.joints[joint_id].max_force * self.max_force_factor, self.joints[joint_id].max_force * self.max_force_factor)
+
+            # Set the motor control to TORQUE_CONTROL mode with the calculated force
             p.setJointMotorControl2(
-                self.robot_id, joint_id, p.POSITION_CONTROL,
-                targetPosition=target_pos,
-                force=self.joints[joint_id].max_force,
-                maxVelocity=self.joints[joint_id].max_velocity
+                self.robot_id, joint_id, p.TORQUE_CONTROL,
+                force=applied_force
             )
+        
+        # Optionally call the parent method if needed
         super().set_gripper_position_target(target_position=target_position)
 
     def get_gripper_position(self):
@@ -77,6 +116,17 @@ class Panda(BaseRobot):
         
         # Return both finger positions as a tuple
         return finger1_position, finger2_position
+    
+    def get_gripper_force(self):
+        """
+        Get the forces applied by the gripper fingers.
+        """
+        joint_states = p.getJointStates(self.robot_id, self.gripper_controllable_joints)
+        finger1_force = joint_states[0][3]  # Applied force for the first gripper finger
+        finger2_force = joint_states[1][3]  # Applied force for the second gripper finger
+        
+        # Return both finger forces as a tuple
+        return finger1_force, finger2_force
     
     def open_gripper(self):
         """
@@ -183,11 +233,11 @@ if __name__ == '__main__':
     while True:
         if not grasp_completed:
             grasp_completed = robot.grasp(tcp_target_pose=grasp_pose, post_grasp_pose=post_grasp_pose)
-        elif not throw_completed:
-            throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
-        else:
-            robot.plot_log_variables()
-        for _ in range(240 // 20):
+        # elif not throw_completed:
+        #     throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
+        # else:
+        #     robot.plot_log_variables()
+        for _ in range(int(240 // 20)):
             p.stepSimulation()
             time.sleep(1./240.)
             robot.log_variables()
