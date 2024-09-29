@@ -9,8 +9,10 @@ from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
 from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
-from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 from tossingbot.utils.pytorch_utils import initialize_weights, load_model, save_model
+from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule, ReplayBuffer
+
+torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
     set_seed()
@@ -47,6 +49,10 @@ if __name__ == '__main__':
     grasping_module = GraspingModule()
     throwing_module = ThrowingModule()
 
+    # Replay buffer
+    replay_buffer = ReplayBuffer(capacity=10000)
+    batch_size = 32  # Set batch size
+
     # Initialize weights with Xavier
     initialize_weights(perception_module)
     initialize_weights(grasping_module)
@@ -75,33 +81,44 @@ if __name__ == '__main__':
 
     # Main loop
     obs, info = env.reset()
-    for episode in tqdm(range(start_episode, total_episodes), desc="Training Progress"):
-        action, intermediates = agent.predict(obs, n_rotations=n_rotations, phi_deg=phi_deg)
-        # plot_heightmaps(intermidiates['depth_heightmaps'])
+    for episode_num in tqdm(range(start_episode, total_episodes), desc="Training Progress"):
+        action, intermediates = agent.predict(obs, n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
         obs, reward, terminated, truncated, info = env.step(action=action)
 
-        # Extract the labels from the environment's reward (grasp label and ground truth residual)
-        grasp_label, gt_residual_label = reward
-        
-        # Initialize loss variable
-        loss = 0
+        # Store the transition in the replay buffer
+        replay_buffer.push((action, intermediates, reward))
 
-        # Grasping loss calculation
-        y_i = torch.tensor(np.array(grasp_label)).to(device=device)
-        q_i = intermediates['q_i_logits']  # logits from the prediction
-        grasp_loss = grasp_criterion(q_i, y_i)  # Compute CrossEntropyLoss with logits
-        loss += grasp_loss
+        # If enough samples are available in the replay buffer, sample a batch
+        if len(replay_buffer) > batch_size:
+            batch = replay_buffer.sample(batch_size)
+            
+            batch_loss = torch.tensor(0.0, device=device)
+            for (action_batch, intermediates_batch, reward_batch) in batch:
+                loss = torch.tensor(0.0, device=device)
+                
+                # Use the intermediates stored in the replay buffer for loss calculation
+                grasp_label, gt_residual_label = reward_batch
 
-        # Throwing loss calculation (if ground truth residual is available)
-        if gt_residual_label is not None:
-            delta_i_bar = torch.tensor(np.array(gt_residual_label)).to(device=device)
-            delta_i = intermediates['delta_i']
-            throw_loss = y_i * throw_criterion(delta_i, delta_i_bar)  # Huber loss for throwing
-            loss += throw_loss
+                # Grasping loss calculation
+                y_i = torch.tensor(np.array(grasp_label)).to(device=device)
+                q_i = intermediates_batch['q_i_logits']  # logits from the stored intermediates
+                grasp_loss = grasp_criterion(q_i, y_i)  # Compute CrossEntropyLoss with logits
+                loss = loss + grasp_loss
 
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+                # Throwing loss calculation (if ground truth residual is available)
+                if gt_residual_label is not None:
+                    delta_i_bar = torch.tensor(np.array(gt_residual_label)).to(device=device)
+                    delta_i = intermediates_batch['delta_i']
+                    throw_loss = y_i * throw_criterion(delta_i, delta_i_bar)  # Huber loss for throwing
+                    y_i_float = y_i.detach().float()
+                    loss = loss + y_i_float * throw_loss
 
-    save_model(agent, optimizer, episode, log_dir)
+                batch_loss = batch_loss + loss
+
+            # Backpropagation for the batch
+            optimizer.zero_grad()
+            batch_loss.backward(retain_graph=True)
+            optimizer.step()
+
+    # Save model after training
+    save_model(agent, optimizer, episode_num, log_dir)

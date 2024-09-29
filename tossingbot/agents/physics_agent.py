@@ -102,6 +102,34 @@ class PhysicsAgent(BaseAgent):
         self.post_grasp_h = post_grasp_h
         self.post_grasp_z = post_grasp_z
 
+    def forward(self, I, v):
+        """
+        Forward pass to predict grasping and throwing parameters.
+
+        Args:
+            I (torch.Tensor): Visual observation (e.g., image or feature map).
+            v (float): Predicted velocity given by physics controller.
+            
+        Returns:
+            tuple: Predicted grasping parameters (q_g) and throwing parameters (q_t).
+        """
+        # Step 1: Process the visual input using the perception module to extract visual features (mu)
+        mu = self.perception_module(I)
+
+        # Step 2: Concatenate the visual features with the predicted velocity
+        B, _, H, W = mu.shape
+        assert B == 1, "Batch size must be 1"
+        
+        # Create a velocity image with the same spatial dimensions as mu and concatenate it
+        velocity_image = torch.full((B, 128, H, W), v, device=self.device)
+        fused_features = torch.cat([mu, velocity_image], dim=1)  # Concatenating along the channel dimension
+
+        # Step 3: Predict the grasping probability map (q_g) and throwing probability map (q_t)
+        q_g = self.grasping_module(fused_features)
+        q_t = self.throwing_module(fused_features)
+
+        return q_g, q_t
+
     def predict(self, observation, n_rotations=16, phi_deg=45, episode_num=None):
         """
         Predict the best grasping and throwing actions based on the observation.

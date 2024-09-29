@@ -18,15 +18,15 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x):
         residual = x
-        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn1(self.conv1(x)), inplace=False)
         out = self.bn2(self.conv2(out))
 
         # Apply 1x1 convolution if necessary to match the number of channels
         if self.residual_conv is not None:
             residual = self.residual_conv(x)
 
-        out += residual  # Residual connection
-        out = F.relu(out)
+        out = out + residual  # Residual connection
+        out = F.relu(out, inplace=False)
         return out
 
 class PerceptionModule(nn.Module):
@@ -40,7 +40,7 @@ class PerceptionModule(nn.Module):
         self.rb3 = ResidualBlock(256, 512)  # From 256 channels to 512
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv1(x), inplace=False)
         x = self.pool1(x)
         x = self.rb1(x)
         x = self.pool2(x)

@@ -625,15 +625,18 @@ class TossObjects(BaseScene):
         }
         
     def check_grasp_success(self):
-        grasp_success = not self.robot._is_gripper_closed()
+        grasp_success = not self.robot._is_gripper_closed(tolerance=1e-2)
         if grasp_success:
             post_grasp_height = self.post_grasp_pose[0][2]
             object_ids = [
                 object_id for object_id in self.object_ids 
                 if self.get_object_pose(object_id)[0][2] > post_grasp_height - 0.1
             ]
-            assert len(object_ids) == 1, "There should be exactly 1 object grasped."
-            object_id = object_ids[0]  # Extract the single object ID
+            assert len(object_ids) <= 1, "There should be exactly 1 object grasped."
+            if len(object_ids) == 0:
+                grasp_success = False   # Double check
+            else:
+                object_id = object_ids[0]   # Extract the single object ID
         else:
             object_id = None
 
