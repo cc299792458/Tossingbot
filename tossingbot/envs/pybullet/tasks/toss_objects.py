@@ -361,6 +361,8 @@ class TossObjects(BaseScene):
             elif self.objects_config['object_types'][object_type] == 'capsule':
                 object_id = create_capsule(radius=0.02, height=0.02, position=[x, y, z], color=random_color())
             
+            # p.changeDynamics(object_id, -1, lateralFriction=2.0, rollingFriction=0.01)
+
             self.object_ids.append(object_id)
         
         # # Perform simulation steps for 0.1 second to stabilize the scene
@@ -570,11 +572,11 @@ class TossObjects(BaseScene):
         """
             Get the ground truth residual velocity based on the landing position of the object.
         """
-        if not self.grasp_success:
-            return None
-        else:
-            for row in self.scene_config['box_n_rows']:
-                for col in self.scene_config['box_n_cols']:
+        residual_velocity = None
+
+        if self.grasp_success:
+            for row in range(self.scene_config['box_n_rows']):
+                for col in range(self.scene_config['box_n_cols']):
                     if self.is_object_in_box(self.grasped_object_id, row, col):
                         box_x, box_y = self.get_box_position(row=row, col=col)
                         actual_throw_velocity = self.compute_throw_velocity((box_x, box_y, self.scene_config['box_height']))
