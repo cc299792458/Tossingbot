@@ -86,7 +86,7 @@ if __name__ == '__main__':
         next_obs, reward, terminated, truncated, info = env.step(action=action[0])
 
         # Store (obs, action, reward) in the replay buffer
-        replay_buffer.push((obs, action, reward))
+        replay_buffer.push((obs, action[0], reward))
 
         # Update current obs
         obs = next_obs
@@ -98,27 +98,35 @@ if __name__ == '__main__':
             batch_loss = torch.tensor(0.0, device=device)
             
             # Process each sample in the batch
-            for (obs_batch, action_batch, reward_batch) in batch:
-                loss = torch.tensor(0.0, device=device)
+            # for (obs_batch, action_batch, reward_batch) in batch:
+            obs_batch, action_batch, reward_batch = replay_buffer.unpack_batch(batch)
+            grasp_label_batch, gt_residual_label_batch = replay_buffer.unpack_batch(reward_batch)
+            grasp_pixel_indices_batch, _, _, _ = replay_buffer.unpack_batch(action_batch)
+            
+            loss = torch.tensor(0.0, device=device)
 
-                # Recompute intermediates using the current model
-                _, intermediates = agent.predict(obs_batch, n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
-                
-                # Grasping loss calculation
-                grasp_label, gt_residual_label = reward_batch
-                y_i = torch.tensor(np.array(grasp_label), dtype=torch.long).to(device=device)
-                q_i = intermediates['q_i_logits']  # logits from the stored intermediates
-                grasp_loss = grasp_criterion(q_i, y_i)
-                loss = loss + grasp_loss
+            # Recompute intermediates using the current model
+            _, intermediates = agent.predict(obs_batch, n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
+            
+            q_i, delta_i = agent.extract_logits_for_loss(
+                q_g=intermediates['q_g'], 
+                q_t=intermediates['q_t'], 
+                grasp_pixel_indices=np.array(grasp_pixel_indices_batch)
+            )
 
-                # Throwing loss calculation (if ground truth residual is available)
+            # Grasping loss calculation
+            y_i = torch.tensor(np.array(grasp_label_batch), dtype=torch.long).to(device=device)
+            grasp_loss = grasp_criterion(q_i, y_i)
+            loss = loss + grasp_loss
+
+            # Throwing loss calculation (if ground truth residual is available)
+            for (b, gt_residual_label) in enumerate(gt_residual_label_batch):
                 if gt_residual_label is not None:
                     delta_i_bar = torch.tensor(np.array(gt_residual_label), dtype=torch.float).to(device=device)
-                    delta_i = intermediates['delta_i']
-                    throw_loss = throw_criterion(delta_i, delta_i_bar)
+                    throw_loss = throw_criterion(delta_i[b], delta_i_bar)
                     loss = loss + throw_loss
 
-                batch_loss = batch_loss + loss
+            batch_loss = batch_loss + loss
 
             # Backpropagation for the batch
             optimizer.zero_grad()

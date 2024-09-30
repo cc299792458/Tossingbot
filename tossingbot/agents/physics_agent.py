@@ -164,15 +164,17 @@ class PhysicsAgent(BaseAgent):
         # Compute post-grasp poses, throwing poses, and velocities
         post_grasp_poses, throw_poses, throw_velocities = self._compute_poses(p_batch, r_batch, v_batch, grasp_pixel_indices)
 
-        # Extract logits for loss computation
-        q_i_logits, delta_i = self._extract_logits_for_loss(q_g, q_t, grasp_pixel_indices)
+        # # Extract logits for loss computation
+        # q_i_logits, delta_i = self.extract_logits_for_loss(q_g, q_t, grasp_pixel_indices)
 
         # Prepare intermediate results
         intermediates = {
             "depth_heightmaps": depth_heightmaps,
             "grasp_affordances": grasp_affordances,
-            "q_i_logits": q_i_logits,
-            "delta_i": delta_i,
+            "q_g": q_g,
+            "q_t": q_t,
+            # "q_i_logits": q_i_logits,
+            # "delta_i": delta_i,
         }
 
         action = self._pack_action(grasp_pixel_indices, post_grasp_poses, throw_poses, throw_velocities)
@@ -272,16 +274,16 @@ class PhysicsAgent(BaseAgent):
 
         return post_grasp_poses, throw_poses, throw_velocities
 
-    def _extract_logits_for_loss(self, q_g, q_t, grasp_pixel_indices):
-        """Extracts logits for loss computation from grasp and throw tensors."""
-        q_i_logits = q_g[torch.arange(q_g.shape[0]), grasp_pixel_indices[:, 0], :, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
-        delta_i = q_t[torch.arange(q_t.shape[0]), grasp_pixel_indices[:, 0], 0, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
-        return q_i_logits, delta_i
-    
     def _pack_action(self, grasp_pixel_indices, post_grasp_poses, throw_poses, throw_velocities):
         """Packs the action"""
         return [(grasp_pixel_indices[i], post_grasp_poses[i], throw_poses[i], throw_velocities[i]) 
                 for i in range(grasp_pixel_indices.shape[0])]
+
+    def extract_logits_for_loss(self, q_g, q_t, grasp_pixel_indices):
+        """Extracts logits for loss computation from grasp and throw tensors."""
+        q_i_logits = q_g[torch.arange(q_g.shape[0]), grasp_pixel_indices[:, 0], :, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
+        delta_i = q_t[torch.arange(q_t.shape[0]), grasp_pixel_indices[:, 0], 0, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
+        return q_i_logits, delta_i
 
 ############### Visualization ###############
 def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):

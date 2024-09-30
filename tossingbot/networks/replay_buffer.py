@@ -42,3 +42,11 @@ class ReplayBuffer:
             int: Current size of the buffer.
         """
         return len(self.buffer)
+
+    def unpack_batch(self, batch):
+        """Unpacks a list of tuples into separate lists, handling an unknown number of items in each tuple."""
+        # Use zip(*) to unpack the batch into multiple lists
+        unpacked = list(zip(*batch))
+        
+        # Convert tuples to lists
+        return [list(items) for items in unpacked]
