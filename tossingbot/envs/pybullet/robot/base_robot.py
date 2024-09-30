@@ -438,7 +438,7 @@ class BaseRobot:
         # Initialize or continue the grasping process
         if not hasattr(self, '_grasp_step'):
             self._grasp_step = 0  # Initialize the grasp step
-            self.pose_over_target = [tcp_target_pose[0][:2] + [0.3], tcp_target_pose[1]]  # Position above the target
+            self.pose_over_target = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Position above the target
             self.tcp_target_pose = tcp_target_pose
 
             # Generate trajectory for moving to the position above the target

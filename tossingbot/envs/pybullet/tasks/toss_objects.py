@@ -26,14 +26,15 @@ from tossingbot.envs.pybullet.utils.camera_utils import (
 
 class TossObjects(BaseScene):
     def __init__(self, 
-             timestep=1/240, 
+             timestep=1/240,
              control_timestep=1/20,
-             gravity=-9.81, 
-             use_gui=True, 
+             gravity=-9.81,
+             use_gui=True,
              visualize_config=None,
              scene_config=None, 
-             robot_config=None, 
-             objects_config=None, 
+             robot_config=None,
+             objects_config=None,
+             task_config=None,
              camera_config=None,
         ):
         """
@@ -47,6 +48,7 @@ class TossObjects(BaseScene):
             scene_config (dict): Configuration for the scene setup (e.g., dimensions, objects).
             robot_config (dict): Configuration for the robot setup (e.g., robot type, starting position).
             objects_config (dict): Configuration for the objects in the scene.
+            task_config (dict): Configuration for the task.
             camera_config (dict): Configuration for the camera setup.
         """
         # Default visualize configuration
@@ -103,6 +105,15 @@ class TossObjects(BaseScene):
         if objects_config is not None:
             default_objects_config.update(objects_config)
         self.objects_config = default_objects_config
+
+        # Default task configuration
+        default_task_config = {
+            "use_heuristic": True,
+            "consecutive_grasp_failures_threshold": 3,
+        }
+        if task_config is not None:
+            default_task_config.update(task_config)
+        self.task_config = default_task_config
 
         # Default camera configuration
         default_camera_config = {
@@ -366,12 +377,15 @@ class TossObjects(BaseScene):
             self.throw_success = False
             self.grasped_object_id = None
 
+            if self.task_config['use_heuristic']:
+                self.consecutive_grasp_failures = 0
+
     ############### Step ###############
     def pre_simulation_process(self, action):
-        self.grasp_pixel_index, post_grasp_pose, throw_pose, throw_velocity = action
+        grasp_pixel_index, self.post_grasp_pose, self.throw_pose, self.throw_velocity = action
 
         # Unpack the grasp pixel index
-        yaw_index, pixel_y, pixel_x = self.grasp_pixel_index
+        yaw_index, pixel_y, pixel_x = grasp_pixel_index
 
         # Calculate the yaw angle in radians based on the rotation index
         yaw = np.radians(yaw_index * 360 / self.camera_config['n_rotations'])
@@ -383,11 +397,12 @@ class TossObjects(BaseScene):
         # Retrieve the depth value from the visual observation
         grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
 
-        # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
-        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
-        self.post_grasp_pose = post_grasp_pose
-        self.throw_pose = throw_pose
-        self.throw_velocity = throw_velocity
+        use_heuristic = self.task_config['use_heuristic'] and self.consecutive_grasp_failures >= self.task_config['consecutive_grasp_failures_threshold']
+        if not use_heuristic:
+            # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
+            self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
+        else:
+            self.grasp_pose = self.grasp_heuristic()
 
     def post_simulation_process(self, completed_and_static):
         if completed_and_static and self.does_workspace_need_reset():
@@ -409,6 +424,7 @@ class TossObjects(BaseScene):
             self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.post_grasp_pose)
             if self.grasp_completed:
                 self.check_grasp_success()
+                self.consecutive_grasp_failures = self.consecutive_grasp_failures + 1 if not self.grasp_success else 0
         elif not self.grasp_success:
             is_action_finished = True
         elif not self.throw_completed:
