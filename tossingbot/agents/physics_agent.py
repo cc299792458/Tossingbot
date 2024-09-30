@@ -164,17 +164,12 @@ class PhysicsAgent(BaseAgent):
         # Compute post-grasp poses, throwing poses, and velocities
         post_grasp_poses, throw_poses, throw_velocities = self._compute_poses(p_batch, r_batch, v_batch, grasp_pixel_indices)
 
-        # # Extract logits for loss computation
-        # q_i_logits, delta_i = self.extract_logits_for_loss(q_g, q_t, grasp_pixel_indices)
-
         # Prepare intermediate results
         intermediates = {
             "depth_heightmaps": depth_heightmaps,
             "grasp_affordances": grasp_affordances,
             "q_g": q_g,
             "q_t": q_t,
-            # "q_i_logits": q_i_logits,
-            # "delta_i": delta_i,
         }
 
         action = self._pack_action(grasp_pixel_indices, post_grasp_poses, throw_poses, throw_velocities)
