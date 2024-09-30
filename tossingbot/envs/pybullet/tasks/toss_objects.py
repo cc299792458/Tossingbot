@@ -327,11 +327,11 @@ class TossObjects(BaseScene):
 
         self.object_ids = []
 
-        assert self.objects_config['n_object'] <= 3, "Too many objects"
+        # assert self.objects_config['n_object'] <= 3, "Too many objects"
 
         z = 0.02
         for i in range(self.objects_config['n_object']):
-            object_type = i
+            object_type = 0
             # object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
             x = random.uniform(
                 self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin,
@@ -562,9 +562,40 @@ class TossObjects(BaseScene):
                     if self.is_object_in_box(self.grasped_object_id, row, col):
                         box_x, box_y = self.get_box_position(row=row, col=col)
                         actual_throw_velocity = self.compute_throw_velocity((box_x, box_y, self.scene_config['box_height']))
+                        actual_velocity_magnitude = np.linalg.norm(actual_throw_velocity[0][0], actual_throw_velocity[0][1], actual_throw_velocity[0][2])
+                        velocity_magnitude = np.linalg.norm(self.throw_velocity[0][0], self.throw_velocity[0][1], self.throw_velocity[0][2])
 
+                        residual_velocity = velocity_magnitude - actual_velocity_magnitude
             
-            return None
+            return residual_velocity
+
+    def grasp_heuristic(self):
+        """
+        Grasp heuristic to help accelerate training.
+        """
+        chosen_object_id = None
+        min_distance = np.inf
+        workspace_position = self.scene_config['workspace_position']
+        workspace_x, workspace_y = workspace_position[0], workspace_position[1]
+
+        for object_id in self.object_ids:
+            object_pose = self.get_object_pose(object_id)
+            object_position = object_pose[0]
+
+            # Calculate the distance from the object to the center of the workspace
+            object_to_workspace_distance = np.linalg.norm([
+                object_position[0] - workspace_x, 
+                object_position[1] - workspace_y
+            ])
+
+            # Update the chosen object if this one is closer
+            if object_to_workspace_distance < min_distance:
+                chosen_object_id = object_id
+                min_distance = object_to_workspace_distance
+
+        object_pose = self.get_object_pose(chosen_object_id)
+
+        return object_pose
 
     def compute_throw_velocity(self, landing_position, g=9.81):
         """

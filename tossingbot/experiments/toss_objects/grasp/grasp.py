@@ -4,7 +4,8 @@ import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 
-from tqdm import tqdm 
+from tqdm import tqdm
+from collections import deque
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
 from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
@@ -24,8 +25,9 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Parameters
-    use_gui = False
+    use_gui = True
     box_n_rows, box_n_cols = 1, 1
+    n_object = 1
 
     r_h = 0.5
     post_grasp_h = 0.3
@@ -34,12 +36,19 @@ if __name__ == '__main__':
 
     total_episodes = 10_000
 
+    # Create deque to track the history of grasp and throw successes
+    grasp_success_history = deque(maxlen=1000)
+    throw_success_history = deque(maxlen=1000)
+
     # Env
     env = TossObjects(
         use_gui=use_gui,
         scene_config={
             'box_n_rows': box_n_rows,
             'box_n_cols': box_n_cols,
+        },
+        objects_config={
+            'n_object': n_object,
         },
         camera_config={'n_rotations': n_rotations}
     )
@@ -81,7 +90,8 @@ if __name__ == '__main__':
 
     # Main loop
     obs, info = env.reset()
-    for episode_num in tqdm(range(start_episode, total_episodes), desc="Training Progress"):
+    progress_bar = tqdm(range(start_episode, total_episodes), desc="Training Progress")
+    for episode_num in progress_bar:
         action, intermediates = agent.predict([obs], n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
         next_obs, reward, terminated, truncated, info = env.step(action=action[0])
 
@@ -91,6 +101,20 @@ if __name__ == '__main__':
         # Update current obs
         obs = next_obs
 
+        # Record grasp success and throw success for this episode
+        grasp_success_history.append(info['grasp_success'])
+        throw_success_history.append(info['throw_success'])
+
+        # Compute average success rates over the last 1000 episodes (or fewer if not enough episodes)
+        avg_grasp_success = np.mean(grasp_success_history)
+        avg_throw_success = np.mean(throw_success_history)
+
+        # Update the tqdm description to display the success rates
+        progress_bar.set_postfix({
+            "Grasp Success Rate": f"{avg_grasp_success:.3f}",
+            "Throw Success Rate": f"{avg_throw_success:.3f}"
+        })
+
         # If enough samples are available in the replay buffer, sample a batch
         if len(replay_buffer) > batch_size:
             batch = replay_buffer.sample(batch_size)
@@ -98,7 +122,6 @@ if __name__ == '__main__':
             batch_loss = torch.tensor(0.0, device=device)
             
             # Process each sample in the batch
-            # for (obs_batch, action_batch, reward_batch) in batch:
             obs_batch, action_batch, reward_batch = replay_buffer.unpack_batch(batch)
             grasp_label_batch, gt_residual_label_batch = replay_buffer.unpack_batch(reward_batch)
             grasp_pixel_indices_batch, _, _, _ = replay_buffer.unpack_batch(action_batch)
