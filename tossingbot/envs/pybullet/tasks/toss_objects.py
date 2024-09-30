@@ -635,6 +635,7 @@ class TossObjects(BaseScene):
             assert len(object_ids) <= 1, "There should be exactly 1 object grasped."
             if len(object_ids) == 0:
                 grasp_success = False   # Double check
+                object_id = None
             else:
                 object_id = object_ids[0]   # Extract the single object ID
         else:

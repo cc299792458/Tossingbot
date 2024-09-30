@@ -82,42 +82,47 @@ if __name__ == '__main__':
     # Main loop
     obs, info = env.reset()
     for episode_num in tqdm(range(start_episode, total_episodes), desc="Training Progress"):
-        action, intermediates = agent.predict(obs, n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
-        obs, reward, terminated, truncated, info = env.step(action=action)
+        action, intermediates = agent.predict([obs], n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
+        next_obs, reward, terminated, truncated, info = env.step(action=action[0])
 
-        # Store the transition in the replay buffer
-        replay_buffer.push((action, intermediates, reward))
+        # Store (obs, action, reward) in the replay buffer
+        replay_buffer.push((obs, action, reward))
+
+        # Update current obs
+        obs = next_obs
 
         # If enough samples are available in the replay buffer, sample a batch
         if len(replay_buffer) > batch_size:
             batch = replay_buffer.sample(batch_size)
             
             batch_loss = torch.tensor(0.0, device=device)
-            for (action_batch, intermediates_batch, reward_batch) in batch:
+            
+            # Process each sample in the batch
+            for (obs_batch, action_batch, reward_batch) in batch:
                 loss = torch.tensor(0.0, device=device)
-                
-                # Use the intermediates stored in the replay buffer for loss calculation
-                grasp_label, gt_residual_label = reward_batch
 
+                # Recompute intermediates using the current model
+                _, intermediates = agent.predict(obs_batch, n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
+                
                 # Grasping loss calculation
-                y_i = torch.tensor(np.array(grasp_label)).to(device=device)
-                q_i = intermediates_batch['q_i_logits']  # logits from the stored intermediates
-                grasp_loss = grasp_criterion(q_i, y_i)  # Compute CrossEntropyLoss with logits
+                grasp_label, gt_residual_label = reward_batch
+                y_i = torch.tensor(np.array(grasp_label), dtype=torch.long).to(device=device)
+                q_i = intermediates['q_i_logits']  # logits from the stored intermediates
+                grasp_loss = grasp_criterion(q_i, y_i)
                 loss = loss + grasp_loss
 
                 # Throwing loss calculation (if ground truth residual is available)
                 if gt_residual_label is not None:
-                    delta_i_bar = torch.tensor(np.array(gt_residual_label)).to(device=device)
-                    delta_i = intermediates_batch['delta_i']
-                    throw_loss = y_i * throw_criterion(delta_i, delta_i_bar)  # Huber loss for throwing
-                    y_i_float = y_i.detach().float()
-                    loss = loss + y_i_float * throw_loss
+                    delta_i_bar = torch.tensor(np.array(gt_residual_label), dtype=torch.float).to(device=device)
+                    delta_i = intermediates['delta_i']
+                    throw_loss = throw_criterion(delta_i, delta_i_bar)
+                    loss = loss + throw_loss
 
                 batch_loss = batch_loss + loss
 
             # Backpropagation for the batch
             optimizer.zero_grad()
-            batch_loss.backward(retain_graph=True)
+            batch_loss.backward()
             optimizer.step()
 
     # Save model after training

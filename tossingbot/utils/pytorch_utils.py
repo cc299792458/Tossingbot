@@ -5,10 +5,10 @@ import torch.nn as nn
 
 def np_image_to_tensor(np_image, device):
     """
-    Converts a numpy image array of shape (H, W, 3) to a PyTorch tensor of shape (1, 3, H, W).
+    Converts a numpy image array of shape (B, H, W, 3) to a PyTorch tensor of shape (B, 3, H, W).
     """
     # Convert numpy array to float32 and rearrange dimensions from (H, W, 3) to (1, 3, H, W)
-    return torch.from_numpy(np_image.astype(np.float32)).permute(2, 0, 1).unsqueeze(0).to(device)
+    return torch.from_numpy(np_image.astype(np.float32)).permute(0, 3, 1, 2).to(device)
 
 def tensor_to_np_image(tensor):
     """

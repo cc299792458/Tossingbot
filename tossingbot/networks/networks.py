@@ -94,24 +94,24 @@ if __name__ == '__main__':
     throwing_module = ThrowingModule()
     
     # Sample input tensor (Batch size 1, 4 channels, 180x140 image)
-    input_tensor = torch.randn(1, 4, 180, 140)
+    input_tensor = torch.randn(2, 4, 180, 140)
 
     physics_velocity = 3.5  # Example estimated velocity
 
     # Pass input through Perception Module
     perception_output = perception_module(input_tensor)
-    print(f'Perception Output Shape: {perception_output.shape}')  # Expected shape: [1, 512, H, W]
+    print(f'Perception Output Shape: {perception_output.shape}')  # Expected shape: [2, 512, H, W]
 
     # Create a velocity image (B, 128, H, W) with each pixel holding the value of the estimated velocity
     B, C, H, W = perception_output.shape
     velocity_image = torch.full((B, 128, H, W), physics_velocity, device=perception_output.device)
 
     # Concatenate the perception output and the velocity image
-    perception_with_velocity = torch.cat([perception_output, velocity_image], dim=1)  # New shape: [1, 640, H, W]
+    perception_with_velocity = torch.cat([perception_output, velocity_image], dim=1)  # New shape: [2, 640, H, W]
 
     # Pass concatenated output to Grasping and Throwing Modules
     grasping_output = grasping_module(perception_with_velocity)
     throwing_output = throwing_module(perception_with_velocity)
 
-    print(f'Grasping Output Shape: {grasping_output.shape}')  # Expected output: [1, 2, H', W']
-    print(f'Throwing Output Shape: {throwing_output.shape}')  # Expected output: [1, 1, H', W']
+    print(f'Grasping Output Shape: {grasping_output.shape}')  # Expected output: [2, 2, H', W']
+    print(f'Throwing Output Shape: {throwing_output.shape}')  # Expected output: [2, 1, H', W']
