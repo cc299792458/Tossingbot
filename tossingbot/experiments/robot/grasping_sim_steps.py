@@ -18,7 +18,7 @@ if __name__ == '__main__':
     gripper_control_mode = 'position'
     use_gripper_gear = True
     robot = Panda(
-        1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
+        1 / 240, 1 / 60, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
         gripper_control_mode=gripper_control_mode, 
         use_gripper_gear=use_gripper_gear, 
         visualize_coordinate_frames=True
@@ -45,16 +45,14 @@ if __name__ == '__main__':
                 gripper_opened = True
         else:
             break  # Gripper opened and closed, simulation complete
-
-        # Step the simulation
-        for _ in range(int(240 // 20)):
-            p.stepSimulation()
-            time.sleep(1./240.)
-            robot.log_variables()
-            if gripper_control_mode == 'torque':
-                robot.keep_gripper_force()
+        
+        p.stepSimulation()
+        time.sleep(1./240.)
+        robot.log_variables()
+        if gripper_control_mode == 'torque':
+            robot.keep_gripper_force()
 
     p.disconnect()
 
-    # It takes 5 simulation steps to close the gripper, and 7 simulation steps to open the gripper
+    # It takes 52 simulation steps to close the gripper, and 79 simulation steps to open the gripper
     print(f"It takes {close_count} simulation steps to close the gripper, and {open_count} simulation steps to open the gripper")

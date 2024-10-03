@@ -299,7 +299,7 @@ if __name__ == '__main__':
     gripper_control_mode = 'position'
     use_gripper_gear = True
     robot = Panda(
-        1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
+        1 / 240, 1 / 60, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
         gripper_control_mode=gripper_control_mode, 
         use_gripper_gear=use_gripper_gear, 
         visualize_coordinate_frames=True
@@ -324,7 +324,7 @@ if __name__ == '__main__':
         #     throw_completed = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_vel)
         # else:
         #     robot.plot_log_variables()
-        for _ in range(int(240 // 20)):
+        for _ in range(int(240 // 60)):
             p.stepSimulation()
             time.sleep(1./240.)
             robot.log_variables()

@@ -5,7 +5,7 @@ import pybullet_data
 import pybullet as p
 
 class BaseScene:
-    def __init__(self, timestep=1./240., control_timestep=1./20., gravity=-9.81, use_gui=True):
+    def __init__(self, timestep=1./240., control_timestep=1./60., gravity=-9.81, use_gui=True):
         """
         Initialize the base simulation scene.
 

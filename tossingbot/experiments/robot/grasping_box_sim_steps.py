@@ -58,14 +58,13 @@ if __name__ == '__main__':
             break  # Gripper opened and closed, simulation complete
 
         # Step the simulation
-        for _ in range(int(240 // 20)):
-            p.stepSimulation()
-            time.sleep(1./240.)
-            robot.log_variables()
-            if gripper_control_mode == 'torque':
-                robot.keep_gripper_force()
+        p.stepSimulation()
+        time.sleep(1./240.)
+        robot.log_variables()
+        if gripper_control_mode == 'torque':
+            robot.keep_gripper_force()
 
     p.disconnect()
 
-    # It takes 2 simulation steps to close the gripper, and 6 simulation steps to open the gripper
+    # It takes 22 simulation steps to close the gripper, and 66 simulation steps to open the gripper
     print(f"It takes {close_count} simulation steps to close the gripper, and {open_count} simulation steps to open the gripper")

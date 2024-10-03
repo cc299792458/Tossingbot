@@ -27,7 +27,7 @@ from tossingbot.envs.pybullet.utils.camera_utils import (
 class TossObjects(BaseScene):
     def __init__(self, 
              timestep=1/240,
-             control_timestep=1/20,
+             control_timestep=1/60,
              gravity=-9.81,
              use_gui=True,
              visualize_config=None,

@@ -17,13 +17,13 @@ if __name__ == '__main__':
     gripper_control_mode = 'position'
     use_gripper_gear = True
     robot = Panda(
-        1 / 240, 1 / 20, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
+        1 / 240, 1 / 60, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
         gripper_control_mode=gripper_control_mode, 
-        use_gripper_gear=use_gripper_gear, 
+        use_gripper_gear=use_gripper_gear,
         visualize_coordinate_frames=True
     )
     create_plane()
-    
+
     position = [0.3, -0.2, 0.03]
     # object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=position, mass=0.2)
     object_id = create_sphere(radius=0.02, position=position, mass=0.2)
