@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import pybullet as p
 import matplotlib.pyplot as plt
@@ -25,6 +26,7 @@ class BaseRobot:
         """
         self.timestep = timestep
         self.control_timestep = control_timestep
+        self.sim_step_per_ctrl_step = int(control_timestep // timestep)
         self.base_position = base_position
         self.base_orientation_quat = p.getQuaternionFromEuler(base_orientation)
         assert gripper_control_mode == 'position' or 'torque'
@@ -426,7 +428,7 @@ class BaseRobot:
         raise NotImplementedError
         
     ############### motion primitives ###############
-    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (1.0, 0.0, 0.0, 0.0))):
+    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (1.0, 0.0, 0.0, 0.0)), estimate_speed=0.2, gripper_duration=1.0):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
@@ -451,7 +453,7 @@ class BaseRobot:
             self.tcp_target_pose = tcp_target_pose
 
             # Generate trajectory for moving to the position above the target
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=0.5)
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=estimate_speed)
             self._trajectory_index = 0  # Initialize trajectory index
 
         # Step 1: Move to a position above the target
@@ -466,14 +468,28 @@ class BaseRobot:
                 self._grasp_step = 1
                 self._trajectory_index = 0  # Reset for the next trajectory
                 # Generate the next trajectory to move down to the target pose
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=0.5)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=estimate_speed)
             return False  # Grasping process not yet complete
+
+        # # Step 2: Open the gripper
+        # elif self._grasp_step == 1:
+        #     self.open_gripper()  # Open the gripper
+        #     if self._is_gripper_stopped():  # Check if the gripper has finished moving
+        #         self._grasp_step = 2  # Move to the next step
+        #     return False  # Grasping process not yet complete
 
         # Step 2: Open the gripper
         elif self._grasp_step == 1:
+            if not hasattr(self, '_open_gripper_step'):
+                self._open_gripper_step = 0
+                self._total_open_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
+            else:
+                self._open_gripper_step += 1
             self.open_gripper()  # Open the gripper
-            if self._is_gripper_stopped():  # Check if the gripper has finished moving
+            if self._open_gripper_step >= self._total_open_gripper_steps:
                 self._grasp_step = 2  # Move to the next step
+                del self._open_gripper_step
+                del self._total_open_gripper_steps
             return False  # Grasping process not yet complete
 
         # Step 3: Move down to the target position
@@ -491,13 +507,30 @@ class BaseRobot:
                 self._trajectory_index = 0  # Reset for the next trajectory
             return False  # Grasping process not yet complete
 
+        # # Step 4: Close the gripper to grasp the object
+        # elif self._grasp_step == 3:
+        #     self.close_gripper()  # Close the gripper
+        #     if self._is_gripper_stopped():  # Check if the gripper has finished moving
+        #         self._grasp_step = 4  # Move to the next step (post-grasp movement)
+        #         # Generate the trajectory to move to the post-grasp position (lifting up safely)
+        #         self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
+        #     return False  # Grasping process not yet complete
+
         # Step 4: Close the gripper to grasp the object
         elif self._grasp_step == 3:
+            if not hasattr(self, '_close_gripper_step'):
+                self._close_gripper_step = 0
+                self._total_close_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
+            else:
+                self._close_gripper_step += 1
             self.close_gripper()  # Close the gripper
-            if self._is_gripper_stopped():  # Check if the gripper has finished moving
+            if self._close_gripper_step >= self._total_close_gripper_steps:
                 self._grasp_step = 4  # Move to the next step (post-grasp movement)
                 # Generate the trajectory to move to the post-grasp position (lifting up safely)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=0.5)
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
+                del self._close_gripper_step
+                del self._total_close_gripper_steps
+
             return False  # Grasping process not yet complete
 
         # Step 5: Move to the post-grasp position
