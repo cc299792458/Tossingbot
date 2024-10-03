@@ -36,8 +36,9 @@ class BaseRobot:
         assert robot_type in ['ur5_robotiq85', 'panda'], "robot_type must be 'ur5_robotiq85' or 'panda'"
         self.load_robot()
         self.reset()
+        self.initialize_targets()
     
-    ###############  initialize logs ###############
+    ###############  initialization ###############
     def initialize_logs(self):
         # List of log attribute names
         log_attrs = [
@@ -56,6 +57,14 @@ class BaseRobot:
         # Initialize logs
         for attr in log_attrs:
             setattr(self, attr, [])
+
+    def initialize_targets(self):
+        """Initialize the targets as the initial configuration"""
+        self.joint_target_position = self.get_arm_joint_position()
+        self.joint_target_velocity = self.get_arm_joint_velocity()
+        self._tcp_target_pose = self.get_tcp_pose()
+        self._tcp_target_velocity = self.get_tcp_velocity()
+        self.gripper_target_position = self.get_gripper_position()
 
     ###############  load robot ###############
     def load_robot(self):
@@ -934,7 +943,7 @@ class BaseRobot:
         self.tcp_pose_log.append(self.get_tcp_pose())
         self.tcp_velocity_log.append(self.get_tcp_velocity())
         self.target_tcp_pose_log.append(self._tcp_target_pose)
-        self.target_tcp_velocity_log.append(self._tcp_target_pose)
+        self.target_tcp_velocity_log.append(self._tcp_target_velocity)
         self.gripper_position_log.append(self.get_gripper_position())
         self.target_gripper_position_log.append(self.gripper_target_position)
 

@@ -40,7 +40,7 @@ class Panda(BaseRobot):
             0.04, 0.04  # Gripper (open)
         ]
 
-        super().__init__(timestep, control_timestep, base_position, base_orientation, gripper_control_mode, robot_type='panda')
+        super().__init__(timestep, control_timestep, base_position, base_orientation, gripper_control_mode, use_gripper_gear, robot_type='panda')
 
         if visualize_coordinate_frames:
             self.visualize_coordinate_frames(links_to_visualize=['tcp_link'])

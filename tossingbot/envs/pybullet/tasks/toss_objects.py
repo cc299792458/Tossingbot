@@ -222,7 +222,7 @@ class TossObjects(BaseScene):
             position (list): Center position [x, y] of the workspace.
         """
         thickness = 0.01
-        height = 0.03
+        height = 0.2
         color = [0.8, 0.8, 0.8, 1.0]
         self.workspace_ids = []
         
