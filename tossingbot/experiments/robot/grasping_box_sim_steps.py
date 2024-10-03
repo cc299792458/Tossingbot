@@ -1,13 +1,14 @@
 """
-    In this experiment, we measure the number of simulation steps required to fully open and close the gripper.
+    In this experiment, we measure the number of simulation steps required to fully open and close the gripper when there is a box between the jaws.
 """
 
 import time
+import numpy as np
 import pybullet as p
 import pybullet_data
 
 from tossingbot.envs.pybullet.robot import Panda
-from tossingbot.envs.pybullet.utils.objects_utils import create_plane
+from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_plane
 
 if __name__ == '__main__':
     physics_client_id = p.connect(p.GUI)  
@@ -25,14 +26,24 @@ if __name__ == '__main__':
     )
     create_plane()
 
+    position = np.array([0.3, -0.3, 0.02])
+    half_side = 0.02
+
     # Simulation step counters
     open_count, close_count = 0, 0
+    gripper_moved = False
     gripper_opened = False
     gripper_closed = False
 
     while True:
-        if not gripper_closed:  # Close the gripper
-            if not robot._is_gripper_closed() or not robot._is_gripper_stopped():
+        if not gripper_moved:   # Move the gripper
+            if not np.linalg.norm(robot.get_tcp_pose()[0] - position) < 1e-4:
+                robot.set_tcp_pose_target([position, [0.0, 0.0, 0.0, 1.0]])
+            else:
+                create_box(half_extents=[half_side, half_side, half_side], position=position, mass=0.1)
+                gripper_moved = True
+        elif not gripper_closed:  # Close the gripper
+            if not robot._is_gripper_closed(close_threshold=half_side) or not robot._is_gripper_stopped():
                 robot.close_gripper()
                 close_count += 1
             else:
@@ -56,5 +67,5 @@ if __name__ == '__main__':
 
     p.disconnect()
 
-    # It takes 5 simulation steps to close the gripper, and 7 simulation steps to open the gripper
+    # It takes 2 simulation steps to close the gripper, and 6 simulation steps to open the gripper
     print(f"It takes {close_count} simulation steps to close the gripper, and {open_count} simulation steps to open the gripper")

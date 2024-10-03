@@ -230,20 +230,28 @@ class Panda(BaseRobot):
         
         return position_condition
 
-    def _is_gripper_closed(self, tolerance=2e-3):
+    def _is_gripper_closed(self, tolerance=2e-3, close_threshold=None):
         """
         Check if the gripper is fully closed.
         
         Args:
             tolerance (float): The tolerance value for checking if the gripper is closed.
+            close_threshold (float, optional): If provided, checks if the gripper has closed by at least 
+                                            this threshold value. If None, checks if the gripper is fully closed.
             
         Returns:
             bool: True if the gripper is closed, False otherwise.
         """
-        position_condition = max(self.get_gripper_position()[0] - self.gripper_range[0], self.get_gripper_position()[1] - self.gripper_range[0]) < tolerance
+        gripper_positions = self.get_gripper_position()  # Get current gripper positions
+        close_threshold = max(close_threshold, self.gripper_range[0]) if close_threshold is not None else self.gripper_range[0]
+        
+        # Check if both gripper positions are within the closed range, using tolerance
+        position_condition = max(gripper_positions[0] - close_threshold, gripper_positions[1] - close_threshold) < tolerance
+        
         return position_condition
 
-    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=3):
+
+    def _is_gripper_stopped(self, position_change_tolerance=1e-4, check_steps=1):
         """
         Check if the gripper has stopped moving based on position change within a certain number of steps.
         
