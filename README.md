@@ -8,3 +8,5 @@ This repository is used to replicate the TossingBot(https://tossingbot.cs.prince
 #### Grasping Primitive
 
 #### Throwing Primitive
+
+## Objects
