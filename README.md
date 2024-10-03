@@ -10,3 +10,4 @@ This repository is used to replicate the TossingBot(https://tossingbot.cs.prince
 #### Throwing Primitive
 
 ## Objects
+![Objects](https://github.com/cc299792458/Tossingbot/blob/main/images/objects.png)
