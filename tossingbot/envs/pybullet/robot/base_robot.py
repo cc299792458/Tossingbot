@@ -211,7 +211,9 @@ class BaseRobot:
             targetPosition=pos,
             targetVelocity=vel,
             force=self.joints[joint_id].max_force,
-            maxVelocity=self.joints[joint_id].max_velocity
+            maxVelocity=self.joints[joint_id].max_velocity,
+            # positionGain=0.5,
+            # velocityGain=0.1,
         )
         self._joint_target_position = target_position
         self._joint_target_velocity = target_velocity
@@ -462,7 +464,6 @@ class BaseRobot:
             self._grasp_step = 0  # Initialize the grasp step
             if not hasattr(self, 'grasp_start_times'):
                 self.grasp_start_times = []  # Record grasp start times
-                self.grasp_end_times = []  # Record grasp end times
             self.grasp_start_times.append(len(self.joint_position_log))  # Record the current start time for plot
 
             self.pose_over_target = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Position above the target
@@ -563,6 +564,8 @@ class BaseRobot:
                 del self._grasp_step  # Cleanup the process state
                 del self._tcp_trajectory
                 del self._trajectory_index
+                if not hasattr(self, 'grasp_end_times'):
+                    self.grasp_end_times = []  # Record grasp end times
                 self.grasp_end_times.append(len(self.joint_position_log))  # Record the current end time for plot
                 return True  # Grasping process is complete
 
@@ -589,6 +592,11 @@ class BaseRobot:
         if not hasattr(self, '_throw_step'):
             # Stage 0: Set initial conditions for the throwing process
             self._throw_step = 0
+            # Log the throw start time
+            if not hasattr(self, 'throw_start_times'):
+                self.throw_start_times = []  # List to store throw start times
+            self.throw_start_times.append(len(self.joint_position_log))  # Record the start time
+            
             self.tcp_target_pose = tcp_target_pose
             self.tcp_target_velocity = tcp_target_velocity
 
@@ -675,6 +683,9 @@ class BaseRobot:
             if all(abs(vel) < 0.01 for vel in joint_velocities):
                 del self._throw_step
                 del self._open_threshold
+                if not hasattr(self, 'throw_end_times'):
+                    self.throw_end_times = []  # List to store throw end times
+                self.throw_end_times.append(len(self.joint_position_log))  # Record the end time
                 return True  # Throwing process complete
 
         return False  # Throwing process not yet complete
@@ -1076,6 +1087,15 @@ class BaseRobot:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
 
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
+
             axes[i].set_title(f'Arm Joint {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
@@ -1132,6 +1152,15 @@ class BaseRobot:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
 
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
+
             axes[i].set_title(f'Arm Joint {i} Velocity')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Velocity')
@@ -1183,6 +1212,15 @@ class BaseRobot:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
 
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
+
             axes[i].set_title(f'Arm Joint {i} Torque')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Torque (Nm)')
@@ -1233,6 +1271,15 @@ class BaseRobot:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
 
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
+
             axes[i].set_title(f'TCP {position_labels[i]} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel(f'{position_labels[i]} Position')
@@ -1252,6 +1299,15 @@ class BaseRobot:
                 for end_time in self.grasp_end_times:
                     grasp_end_time = end_time * self.timestep
                     axes[i + 3].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i + 3].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i + 3].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
 
             axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
             axes[i + 3].set_xlabel('Time (s)')
@@ -1303,6 +1359,15 @@ class BaseRobot:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
 
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
+
             axes[i].set_title(f'TCP {linear_velocity_labels[i]}')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel(f'{linear_velocity_labels[i]} (m/s)')
@@ -1322,6 +1387,15 @@ class BaseRobot:
                 for end_time in self.grasp_end_times:
                     grasp_end_time = end_time * self.timestep
                     axes[i + 3].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i + 3].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i + 3].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
             
             axes[i + 3].set_title(f'TCP {angular_velocity_labels[i]}')
             axes[i + 3].set_xlabel('Time (s)')
@@ -1376,6 +1450,15 @@ class BaseRobot:
                 for end_time in self.grasp_end_times:
                     grasp_end_time = end_time * self.timestep
                     axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
+            # If there are recorded throw times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'throw_start_times') and hasattr(self, 'throw_end_times'):
+                for start_time in self.throw_start_times:
+                    throw_start_time = start_time * self.timestep
+                    axes[i].axvline(x=throw_start_time, color='purple', linestyle='--', label='Throw Start')
+                for end_time in self.throw_end_times:
+                    throw_end_time = end_time * self.timestep
+                    axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
 
             axes[i].set_title(f'Gripper DOF {i} Position')
             axes[i].set_xlabel('Time (s)')
