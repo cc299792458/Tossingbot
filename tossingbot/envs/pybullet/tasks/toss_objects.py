@@ -36,6 +36,7 @@ class TossObjects(BaseScene):
              objects_config=None,
              task_config=None,
              camera_config=None,
+             log_config=None,
         ):
         """
         Initialize the TossObjects scene.
@@ -50,6 +51,7 @@ class TossObjects(BaseScene):
             objects_config (dict): Configuration for the objects in the scene.
             task_config (dict): Configuration for the task.
             camera_config (dict): Configuration for the camera setup.
+            log_config (dict): Configuration for the log.
         """
         # Default visualize configuration
         default_visualize_config = {
@@ -57,10 +59,12 @@ class TossObjects(BaseScene):
             "visualize_camera": True,
             "visualize_visual_plots": False,
             "visualize_target": True,
+            "visualize_tcp": False,
         }
         if visualize_config is not None:
             default_visualize_config.update(visualize_config)
         self.visualize_config = default_visualize_config
+        
         # Default scene configuration
         default_scene_config = {
             "workspace_length": 0.3,
@@ -148,6 +152,14 @@ class TossObjects(BaseScene):
             "cam_view_ylim": cam_view_ylim,
         })
         self.camera_config = default_camera_config
+
+        # Default log configuration
+        default_log_config = {
+            "log_robot_variables": False
+        }
+        if log_config is not None:
+            default_log_config.update(log_config)
+        self.log_config = default_log_config
 
         super().__init__(timestep=timestep, control_timestep=control_timestep, gravity=gravity, use_gui=use_gui)
 
@@ -445,7 +457,8 @@ class TossObjects(BaseScene):
         return is_action_finished and are_objects_static
 
     def post_control_step(self):
-        pass
+        if self.use_gui and self.visualize_config['visualize_tcp']:
+            self.robot.visualize_tcp_trajectory()
 
     def pre_simulation_step(self):
         pass
@@ -453,6 +466,8 @@ class TossObjects(BaseScene):
     def post_simulation_step(self):
         if self.robot_config['gripper_control_mode'] == 'torque':
             self.robot.keep_gripper_force()
+        if self.log_config['log_robot_variables']:
+            self.robot.log_variables()
         if self.use_gui and self.visualize_config['visualize_visual_plots']:
             rgb_img, depth_img, point_cloud, colors, \
             color_heightmap, depth_heightmap, \

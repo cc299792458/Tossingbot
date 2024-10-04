@@ -5,12 +5,14 @@
     Each sphere is removed after the grasp attempt, and the process repeats for the next position.
 """
 
+import os
 import time
 import numpy as np
 import pybullet as p
 import pybullet_data
 import matplotlib.pyplot as plt
 
+from tqdm import tqdm
 from tossingbot.envs.pybullet.robot import Panda
 from tossingbot.envs.pybullet.utils.objects_utils import create_sphere, create_plane
 
@@ -34,9 +36,9 @@ def run_grasping_experiment(robot, grid_points, ball_radius=0.02, ball_mass=0.1,
     # Initialize an empty list to store success or failure for each grasp
     results = []
     
-    for position in grid_points:
+    for position in tqdm(grid_points, desc="Running Grasping Experiment"):
         # Create a sphere at the current position
-        ball_position = [position[0], position[1], 0.03]  # Z position is fixed for the sphere
+        ball_position = [position[0], position[1], 0.02]  # Z position is fixed for the sphere
         object_id = create_sphere(radius=ball_radius, position=ball_position, mass=ball_mass)
 
         # Define the grasp and post-grasp poses
@@ -97,6 +99,15 @@ def plot_grasp_results(success_matrix, x_points, y_points):
     ax.set_ylabel('Y Position')
     ax.set_title('Grasping Results (O: Success, X: Failure)')
     
+    # Create directory if it doesn't exist
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # Save the plot to the logs directory
+    plot_filename = os.path.join(log_dir, "grasping_results.png")
+    plt.savefig(plot_filename)
+
     plt.show()
 
 if __name__ == '__main__':
@@ -108,11 +119,12 @@ if __name__ == '__main__':
     # Create Panda robot
     gripper_control_mode = 'position'
     use_gripper_gear = True
+    visualize_coordinate_frames = True
     robot = Panda(
         1 / 240, 1 / 60, (0, 0.0, 0.0), (0.0, 0.0, 0.0),
         gripper_control_mode=gripper_control_mode, 
         use_gripper_gear=use_gripper_gear,
-        visualize_coordinate_frames=True
+        visualize_coordinate_frames=visualize_coordinate_frames,
     )
 
     # Create a plane in the environment

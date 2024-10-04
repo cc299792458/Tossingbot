@@ -32,15 +32,22 @@ class BaseRobot:
         assert gripper_control_mode == 'position' or 'torque'
         self.gripper_control_mode = gripper_control_mode
         self.use_gripper_gear = use_gripper_gear
-        self.links = {}  # Store link information
-        self.initialize_logs()
         self.robot_type = robot_type
         assert robot_type in ['ur5_robotiq85', 'panda'], "robot_type must be 'ur5_robotiq85' or 'panda'"
         self.load_robot()
         self.reset()
         self.initialize_targets()
+        self.initialize_logs()
     
     ###############  initialization ###############
+    def initialize_targets(self):
+        """Initialize the targets as the initial configuration"""
+        self._joint_target_position = self.get_arm_joint_position()
+        self._joint_target_velocity = self.get_arm_joint_velocity()
+        self._tcp_target_pose = self.get_tcp_pose()
+        self._tcp_target_velocity = self.get_tcp_velocity()
+        self._gripper_target_position = self.get_gripper_position()
+
     def initialize_logs(self):
         # List of log attribute names
         log_attrs = [
@@ -59,14 +66,6 @@ class BaseRobot:
         # Initialize logs
         for attr in log_attrs:
             setattr(self, attr, [])
-
-    def initialize_targets(self):
-        """Initialize the targets as the initial configuration"""
-        self.joint_target_position = self.get_arm_joint_position()
-        self.joint_target_velocity = self.get_arm_joint_velocity()
-        self._tcp_target_pose = self.get_tcp_pose()
-        self._tcp_target_velocity = self.get_tcp_velocity()
-        self.gripper_target_position = self.get_gripper_position()
 
     ###############  load robot ###############
     def load_robot(self):
@@ -103,7 +102,6 @@ class BaseRobot:
             'lower_limit', 'upper_limit', 'max_force',
             'max_velocity', 'controllable'
         ])
-
         self.joints = []
         self.controllable_joints = []
 
@@ -142,11 +140,13 @@ class BaseRobot:
         Store link information in a dictionary and set the TCP link based on the robot type.
         """
         num_joints = p.getNumJoints(self.robot_id)
+        self.links = {}
+        
         self.links[p.getBodyInfo(self.robot_id)[0].decode('utf-8')] = -1
         for joint_id in range(num_joints):
             link_name = p.getJointInfo(self.robot_id, joint_id)[12].decode('utf-8')
             self.links[link_name] = joint_id
-            # # Change friction parameter
+            # Change friction parameter
             if change_dynamics:
                 p.changeDynamics(self.robot_id, joint_id, lateralFriction=1.0, rollingFriction=0.01, linearDamping=0, angularDamping=0)
         
@@ -211,8 +211,8 @@ class BaseRobot:
             force=self.joints[joint_id].max_force,
             maxVelocity=self.joints[joint_id].max_velocity
         )
-        self.joint_target_position = target_position
-        self.joint_target_velocity = target_velocity
+        self._joint_target_position = target_position
+        self._joint_target_velocity = target_velocity
 
     def set_arm_joint_velocity_target(self, target_velocity):
         """
@@ -395,7 +395,7 @@ class BaseRobot:
         raise NotImplementedError
     
     def set_gripper_position_target(self, target_position):
-        self.gripper_target_position = target_position
+        self._gripper_target_position = target_position
     
     def get_gripper_position(self):
         raise NotImplementedError
@@ -934,13 +934,14 @@ class BaseRobot:
                 parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
             )
 
-    def visualize_tcp_trajectory(self, color_target=[1, 0, 0], color_actual=[0, 1, 0], line_duration=5):
+    def visualize_tcp_trajectory(self, color_target=[1, 0, 0], color_actual=[0, 1, 0], line_width=3.0, line_duration=5):
         """
         Visualize the TCP target and actual trajectories using debug lines.
         
         Args:
             color_target (list): RGB color for target trajectory lines.
             color_actual (list): RGB color for actual trajectory lines.
+            line_width (float): The width of the lines.
             line_duration (float): The duration for which the lines will be visible.
         """
 
@@ -959,11 +960,11 @@ class BaseRobot:
 
         if target_pose is not None:
             # Visualize the target TCP trajectory
-            p.addUserDebugLine(self._prev_tcp_target_pose[0], target_pose[0], color_target, line_duration)
+            p.addUserDebugLine(self._prev_tcp_target_pose[0], target_pose[0], color_target, lineWidth=line_width, lifeTime=line_duration)
             self._prev_tcp_target_pose = target_pose
 
         # Visualize the actual TCP trajectory
-        p.addUserDebugLine(self._prev_tcp_pose[0], current_pose[0], color_actual, line_duration)
+        p.addUserDebugLine(self._prev_tcp_pose[0], current_pose[0], color_actual, lineWidth=line_width, lifeTime=line_duration)
         self._prev_tcp_pose = current_pose
     
     ############### log ###############
@@ -971,14 +972,14 @@ class BaseRobot:
         # Append current values to logs
         self.joint_position_log.append(self.get_arm_joint_position())
         self.joint_velocity_log.append(self.get_arm_joint_velocity())
-        self.target_joint_position_log.append(self.joint_target_position)
-        self.target_joint_velocity_log.append(self.joint_target_velocity)
+        self.target_joint_position_log.append(self._joint_target_position)
+        self.target_joint_velocity_log.append(self._joint_target_velocity)
         self.tcp_pose_log.append(self.get_tcp_pose())
         self.tcp_velocity_log.append(self.get_tcp_velocity())
         self.target_tcp_pose_log.append(self._tcp_target_pose)
         self.target_tcp_velocity_log.append(self._tcp_target_velocity)
         self.gripper_position_log.append(self.get_gripper_position())
-        self.target_gripper_position_log.append(self.gripper_target_position)
+        self.target_gripper_position_log.append(self._gripper_target_position)
 
     ############### plot ###############
     def plot_log_variables(self, variables=None):
@@ -1008,6 +1009,7 @@ class BaseRobot:
     def plot_arm_joint_position(self):
         """
         Plot the arm's joint-related position variables over time, including both actual and target values.
+        Joint limits (lower and upper) are also plotted as yellow dotted lines.
         """
         num_joints = self.num_arm_dofs  # Number of joints to plot
         timesteps = np.arange(len(self.joint_position_log)) * self.timestep  # Convert to actual time
@@ -1030,6 +1032,12 @@ class BaseRobot:
             target_joint_positions = [log[i] for log in self.target_joint_position_log]
             axes[i].plot(timesteps, target_joint_positions, label=f'Joint {i} Target Position', linestyle='--', color='green')
 
+            # Add joint limits as dotted lines
+            lower_limit = self.arm_lower_limits[i]
+            upper_limit = self.arm_upper_limits[i]
+            axes[i].axhline(lower_limit, color='yellow', linestyle=':', label=f'Joint {i} Lower Limit')
+            axes[i].axhline(upper_limit, color='yellow', linestyle=':', label=f'Joint {i} Upper Limit')
+
             axes[i].set_title(f'Arm Joint {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
@@ -1041,6 +1049,7 @@ class BaseRobot:
     def plot_arm_joint_velocity(self):
         """
         Plot the arm's joint-related velocity variables over time, including both actual and target values.
+        Joint velocity limits are also plotted as yellow dotted lines.
         """
         num_joints = self.num_arm_dofs  # Number of joints to plot
         timesteps = np.arange(len(self.joint_velocity_log)) * self.timestep  # Convert to actual time
@@ -1062,6 +1071,11 @@ class BaseRobot:
             # Plot target joint velocity
             target_joint_velocities = [log[i] for log in self.target_joint_velocity_log]
             axes[i].plot(timesteps, target_joint_velocities, label=f'Joint {i} Target Velocity', linestyle='--', color='green')
+
+            # Add joint velocity limits as dotted lines
+            max_velocity = self.joints[i].max_velocity
+            axes[i].axhline(-max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Min Velocity')
+            axes[i].axhline(max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Max Velocity')
 
             axes[i].set_title(f'Arm Joint {i} Velocity')
             axes[i].set_xlabel('Time (s)')
