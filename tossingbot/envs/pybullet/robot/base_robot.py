@@ -1022,11 +1022,11 @@ class BaseRobot:
         """
         if variables is None:
             variables = [
-                'arm_joint_position', 
-                'arm_joint_velocity', 
+                'arm_joint_position',
+                'arm_joint_velocity',
                 'arm_joint_torque',
-                'tcp_position', 
-                'tcp_velocity', 
+                'tcp_position',
+                'tcp_velocity',
                 'gripper_position'
             ]  # Plot all if no specific selection
 
