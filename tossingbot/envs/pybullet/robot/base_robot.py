@@ -855,10 +855,12 @@ class BaseRobot:
         
         return subtargets
 
-    def _generate_quintic_trajectory(self, start_s, end_s, start_v=None, end_v=None, start_acc=None, end_acc=None, duration=None, num_steps=100):
+    def _generate_quintic_trajectory(self, start_s, end_s, start_v=None, end_v=None, start_acc=None, end_acc=None,
+                                 duration=None, max_vel=None, max_acc=None, num_steps=100):
         """
-        Generates a quintic polynomial trajectory for multiple dimensions (e.g., position components).
-        
+        Generates a quintic polynomial trajectory for multiple dimensions (e.g., position components),
+        considering maximum velocity and acceleration constraints.
+
         Args:
             start_s (float or np.ndarray): Initial positions for each dimension (e.g., [x, y, z]).
             end_s (float or np.ndarray): Target positions for each dimension.
@@ -866,11 +868,13 @@ class BaseRobot:
             end_v (float or np.ndarray, optional): Target velocities for each dimension. Defaults to 0 if None.
             start_acc (float or np.ndarray, optional): Initial accelerations for each dimension. Defaults to 0 if None.
             end_acc (float or np.ndarray, optional): Target accelerations for each dimension. Defaults to 0 if None.
-            duration (float): Total duration of the trajectory.
+            duration (float, optional): Total duration of the trajectory. If None, it will be calculated based on max_vel and max_acc.
+            max_vel (float or np.ndarray, optional): Maximum allowable velocities for each dimension.
+            max_acc (float or np.ndarray, optional): Maximum allowable accelerations for each dimension.
             num_steps (int): Number of points to sample along the trajectory.
-            
+
         Returns:
-            tuple: 
+            tuple:
                 np.ndarray: Array of positions sampled along the quintic polynomial trajectory.
                 np.ndarray: Array of velocities sampled along the quintic polynomial trajectory.
         """
@@ -879,32 +883,65 @@ class BaseRobot:
         end_s = np.array(end_s)
 
         # Set velocities and accelerations to zero arrays if they are None
-        start_v = np.zeros_like(start_s) if start_v is None else start_v
-        end_v = np.zeros_like(end_s) if end_v is None else end_v
-        start_acc = np.zeros_like(start_s) if start_acc is None else start_acc
-        end_acc = np.zeros_like(end_s) if end_acc is None else end_acc
+        start_v = np.zeros_like(start_s) if start_v is None else np.array(start_v)
+        end_v = np.zeros_like(end_s) if end_v is None else np.array(end_v)
+        start_acc = np.zeros_like(start_s) if start_acc is None else np.array(start_acc)
+        end_acc = np.zeros_like(end_s) if end_acc is None else np.array(end_acc)
+
+        # Convert max_vel and max_acc to numpy arrays if provided
+        if max_vel is not None:
+            max_vel = np.array(max_vel)
+        if max_acc is not None:
+            max_acc = np.array(max_acc)
+
+        # If duration is not provided or needs to be adjusted based on max_vel and max_acc
+        if duration is None or max_vel is not None or max_acc is not None:
+            durations = []
+            for dim in range(len(start_s)):
+                delta_s = end_s[dim] - start_s[dim]
+                # Initial estimates for duration based on max_vel and max_acc
+                duration_vel = 0.0
+                duration_acc = 0.0
+
+                if max_vel is not None and max_vel[dim] > 0:
+                    duration_vel = (15.0 / 8.0) * (abs(delta_s) / max_vel[dim])
+
+                if max_acc is not None and max_acc[dim] > 0:
+                    duration_acc = np.sqrt(10 * np.abs(delta_s) / (max_acc[dim] * np.sqrt(3)))
+
+                duration_dim = max(duration_vel, duration_acc, duration) if duration is not None else max(duration_vel, duration_acc)
+                durations.append(duration_dim)
+
+            # Take the maximum duration across all dimensions
+            duration = max(durations)
 
         # Initialize the trajectory for each dimension
         trajectory_s = np.zeros((num_steps, len(start_s)))
         trajectory_v = np.zeros((num_steps, len(start_s)))
-        
+
+        # Time steps
+        t_s = np.linspace(0, duration, num_steps)
+
         # Compute the quintic polynomial for each dimension independently
         for dim in range(len(start_s)):
             delta_s = end_s[dim] - start_s[dim]
-            # Corrected quintic polynomial coefficients
-            A = (12 * delta_s - 6 * (start_v[dim] + end_v[dim]) * duration - (end_acc[dim] - start_acc[dim]) * duration**2) / (2 * duration**5)
-            B = (-30 * delta_s + (16 * start_v[dim] + 14 * end_v[dim]) * duration + (3 * start_acc[dim] - 2 * end_acc[dim]) * duration**2) / (2 * duration**4)
-            C = (20 * delta_s - (12 * start_v[dim] + 8 * end_v[dim]) * duration - (3 * start_acc[dim] - end_acc[dim]) * duration**2) / (2 * duration**3)
-            D = start_acc[dim] / 2
+
+            # Calculate quintic polynomial coefficients
+            A = (12 * delta_s - 6 * (start_v[dim] + end_v[dim]) * duration -
+                (end_acc[dim] - start_acc[dim]) * duration**2) / (2 * duration**5)
+            B = (-30 * delta_s + (16 * start_v[dim] + 14 * end_v[dim]) * duration +
+                (3 * start_acc[dim] - 2 * end_acc[dim]) * duration**2) / (2 * duration**4)
+            C = (20 * delta_s - (12 * start_v[dim] + 8 * end_v[dim]) * duration -
+                (3 * start_acc[dim] - end_acc[dim]) * duration**2) / (2 * duration**3)
+            D = start_acc[dim] / 2.0
             E = start_v[dim]
             F = start_s[dim]
 
-            # Time steps
-            t_s = np.linspace(0, duration, num_steps)
             # Evaluate the quintic polynomial at each time step for this dimension
             trajectory_s[:, dim] = A * t_s**5 + B * t_s**4 + C * t_s**3 + D * t_s**2 + E * t_s + F
             # Velocity is the derivative of the position polynomial
-            trajectory_v[:, dim] = 5 * A * t_s**4 + 4 * B * t_s**3 + 3 * C * t_s**2 + 2 * D * t_s + E
+            trajectory_v[:, dim] = (5 * A * t_s**4 + 4 * B * t_s**3 +
+                                    3 * C * t_s**2 + 2 * D * t_s + E)
 
         return trajectory_s, trajectory_v
 
