@@ -56,6 +56,7 @@ class BaseRobot:
             'joint_velocity_log',
             'target_joint_position_log',
             'target_joint_velocity_log',
+            'joint_torque_log',
             'tcp_pose_log',
             'tcp_velocity_log',
             'target_tcp_pose_log',
@@ -247,6 +248,15 @@ class BaseRobot:
             list: Current velocities of arm controllable joints.
         """
         return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.arm_controllable_joints]
+    
+    def get_arm_joint_torque(self):
+        """
+        Get the current motor torques of the arm joints.
+
+        Returns:
+            list: Current motor torques applied by the motors on the arm controllable joints.
+        """
+        return [p.getJointState(self.robot_id, joint_id)[3] for joint_id in self.arm_controllable_joints]
 
     ############### set tcp pose, get tcp pose, and inverse kinematics ###############
     def set_tcp_pose(self, tcp_pose):
@@ -981,6 +991,7 @@ class BaseRobot:
         self.joint_velocity_log.append(self.get_arm_joint_velocity())
         self.target_joint_position_log.append(self._joint_target_position)
         self.target_joint_velocity_log.append(self._joint_target_velocity)
+        self.joint_torque_log.append(self.get_arm_joint_torque())
         self.tcp_pose_log.append(self.get_tcp_pose())
         self.tcp_velocity_log.append(self.get_tcp_velocity())
         self.target_tcp_pose_log.append(self._tcp_target_pose)
@@ -999,12 +1010,21 @@ class BaseRobot:
             log_dir (str): The path to save the figs.
         """
         if variables is None:
-            variables = ['arm_joint_position', 'arm_joint_velocity', 'tcp_position', 'tcp_velocity', 'gripper_position']  # Plot all if no specific selection
+            variables = [
+                'arm_joint_position', 
+                'arm_joint_velocity', 
+                'arm_joint_torque',
+                'tcp_position', 
+                'tcp_velocity', 
+                'gripper_position'
+            ]  # Plot all if no specific selection
 
         if 'arm_joint_position' in variables:
             self.plot_arm_joint_position(savefig=savefig, log_dir=log_dir)
         if 'arm_joint_velocity' in variables:
             self.plot_arm_joint_velocity(savefig=savefig, log_dir=log_dir)
+        if 'arm_joint_torque' in variables:
+            self.plot_arm_joint_torque(savefig=savefig, log_dir=log_dir)
         if 'tcp_position' in variables:
             self.plot_tcp_position(savefig=savefig, log_dir=log_dir)
         if 'tcp_velocity' in variables:
@@ -1124,6 +1144,57 @@ class BaseRobot:
             if not os.path.exists(log_dir):
                 os.makedirs(log_dir)  # Create the directory if it doesn't exist
             fig_path = os.path.join(log_dir, 'arm_joint_velocity.png')
+            plt.savefig(fig_path)
+
+        plt.pause(0.001)
+
+    def plot_arm_joint_torque(self, savefig=False, log_dir=None):
+        """
+        Plot the arm's joint-related motor torque variables over time, including torque limits.
+        """
+        num_joints = self.num_arm_dofs  # Number of joints to plot
+        timesteps = np.arange(len(self.joint_torque_log)) * self.timestep  # Convert to actual time
+
+        fig, axes = plt.subplots(nrows=num_joints, ncols=1, figsize=(10, 1.5*num_joints))
+
+        # Add a general title for the figure
+        fig.suptitle('Arm Joint Torques Over Time', fontsize=16)
+
+        # If there's only one joint, ensure axes is iterable
+        if num_joints == 1:
+            axes = [axes]
+
+        for i in range(num_joints):
+            # Plot joint torque
+            actual_joint_torques = [log[i] for log in self.joint_torque_log]
+            axes[i].plot(timesteps, actual_joint_torques, label=f'Joint {i} Torque', linestyle='-', color='red')
+
+            # Plot max force (torque) limit using self.joints to access max_force
+            max_force = self.joints[i].max_force
+            axes[i].axhline(-max_force, color='yellow', linestyle=':', label=f'Joint {i} Min Torque')
+            axes[i].axhline(max_force, color='yellow', linestyle=':', label=f'Joint {i} Max Torque')
+
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
+            axes[i].set_title(f'Arm Joint {i} Torque')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Torque (Nm)')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'arm_joint_torque.png')
             plt.savefig(fig_path)
 
         plt.pause(0.001)
