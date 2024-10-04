@@ -409,7 +409,9 @@ class TossObjects(BaseScene):
         grasp_y = self.scene_config['workspace_ylim'][1] - pixel_y * self.camera_config['heightmap_resolution']
 
         # Retrieve the depth value from the visual observation
-        grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
+        # grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
+
+        grasp_z = 0.02
 
         use_heuristic = self.task_config['use_heuristic'] and self.consecutive_grasp_failures >= self.task_config['consecutive_grasp_failures_threshold']
         if not use_heuristic:

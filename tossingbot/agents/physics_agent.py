@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+from scipy.spatial.transform import Rotation as R
 from tossingbot.agents.base_agent import BaseAgent
 from tossingbot.utils.pytorch_utils import np_image_to_tensor
 from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
@@ -11,7 +12,7 @@ from tossingbot.envs.pybullet.utils.math_utils import rotate_image_tensor
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 class PhysicsController:
-    def __init__(self, r_h=0.4, r_z=0.4):
+    def __init__(self, r_h=0.6, r_z=0.4):
         """
         Initialize the PhysicsController with specified parameters for throw distance and height.
 
@@ -77,8 +78,8 @@ class PhysicsAgent(BaseAgent):
             grasping_module: nn.Module = None, 
             throwing_module: nn.Module = None, 
             physics_controller: PhysicsController = None,
-            post_grasp_h: float = 0.3,
-            post_grasp_z: float = 0.4,
+            # post_grasp_h: float = 0.3,
+            # post_grasp_z: float = 0.4,
             epsilons: list[float] = [0.5, 0.1],
             total_episodes: int = 10000,  # Add total episodes for scheduling
         ):
@@ -99,8 +100,8 @@ class PhysicsAgent(BaseAgent):
         """
         super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons, total_episodes)
         self.physics_controller = physics_controller
-        self.post_grasp_h = post_grasp_h
-        self.post_grasp_z = post_grasp_z
+        # self.post_grasp_h = post_grasp_h
+        # self.post_grasp_z = post_grasp_z
 
     def forward(self, I, v):
         """
@@ -162,7 +163,7 @@ class PhysicsAgent(BaseAgent):
         grasp_pixel_indices = self._select_grasp_pixels(grasp_affordances)
 
         # Compute post-grasp poses, throwing poses, and velocities
-        post_grasp_poses, throw_poses, throw_velocities = self._compute_poses(p_batch, r_batch, v_batch, grasp_pixel_indices)
+        post_grasp_poses, throw_poses, throw_velocities = self._compute_poses(p_batch, r_batch, v_batch, phi_deg)
 
         # Prepare intermediate results
         intermediates = {
@@ -201,7 +202,6 @@ class PhysicsAgent(BaseAgent):
         q_g = []
         q_t = []
         depth_heightmaps = []
-        
 
         I_tensor = np_image_to_tensor(I_batch, self.device)
 
@@ -249,23 +249,36 @@ class PhysicsAgent(BaseAgent):
 
         return np.array(grasp_pixel_indices)
 
-    def _compute_poses(self, p_batch, r_batch, v_batch, grasp_pixel_indices):
+    def _compute_poses(self, p_batch, r_batch, v_batch, phi_deg=45):
         """Computes post-grasp poses, throwing poses, and velocities."""
         post_grasp_poses, throw_poses, throw_velocities = [], [], []
 
         for b in range(p_batch.shape[0]):
             target_x, target_y, target_z = p_batch[b]
             theta = np.arctan2(target_y, target_x)
+            phi = np.radians(phi_deg)
 
-            post_grasp_pose = ([self.post_grasp_h * np.cos(theta), self.post_grasp_h * np.sin(theta), self.post_grasp_z],
-                            [0.0, 0.0, 0.0, 1.0])
-            post_grasp_poses.append(post_grasp_pose)
+            rotation_z = R.from_euler('z', theta)
+            rotation_y = R.from_euler('y', -phi)
 
-            throw_pose = ([r_batch[b][0], r_batch[b][1], r_batch[b][2]], [0.0, 0.0, 0.0, 1.0])
-            throw_velocity = ([v_batch[b][0], v_batch[b][1], v_batch[b][2]], [0.0, 0.0, 0.0])
-            
+            throw_quaternion = (rotation_z * rotation_y).as_quat()
+            throw_pose = ([r_batch[b][0], r_batch[b][1], r_batch[b][2]], throw_quaternion)
             throw_poses.append(throw_pose)
+
+            throw_velocity = ([v_batch[b][0], v_batch[b][1], v_batch[b][2]], [0.0, 0.0, 0.0])
             throw_velocities.append(throw_velocity)
+
+            # Determine the post grasp pose based on the throwing pose and throwing velocity
+            velocity_magnitude = np.linalg.norm(v_batch[b])
+            distance = min(velocity_magnitude * 0.25, 0.5)
+            delta_h = distance * np.cos(phi)
+            delta_z = distance * np.sin(phi)
+            post_grasp_x = r_batch[b][0] - delta_h * np.cos(theta)
+            post_grasp_y = r_batch[b][1] - delta_h * np.sin(theta)
+            post_grasp_z = r_batch[b][2] - delta_z
+            post_grasp_quaternion = rotation_z.as_quat()
+            post_grasp_pose = ([post_grasp_x, post_grasp_y, post_grasp_z], post_grasp_quaternion)
+            post_grasp_poses.append(post_grasp_pose)
 
         return post_grasp_poses, throw_poses, throw_velocities
 

@@ -29,8 +29,8 @@ if __name__ == '__main__':
     box_n_rows, box_n_cols = 1, 1
     n_object = 1
 
-    r_h = 0.5
-    post_grasp_h = 0.3
+    # r_h = 0.5
+    # post_grasp_h = 0.3
     n_rotations = 1
     phi_deg = 0
 
@@ -68,14 +68,14 @@ if __name__ == '__main__':
     initialize_weights(throwing_module)
 
     # Agent
-    physics_controller = PhysicsController(r_h=r_h)
+    physics_controller = PhysicsController()
     agent = PhysicsAgent(
         device=device, 
         perception_module=perception_module, 
         grasping_module=grasping_module, 
         throwing_module=throwing_module,
         physics_controller=physics_controller,
-        post_grasp_h=post_grasp_h,
+        # post_grasp_h=post_grasp_h,
     )
 
     # Optimizer
