@@ -1,3 +1,4 @@
+import os
 import math
 import numpy as np
 import pybullet as p
@@ -428,7 +429,7 @@ class BaseRobot:
         raise NotImplementedError
         
     ############### motion primitives ###############
-    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (1.0, 0.0, 0.0, 0.0)), estimate_speed=0.2, gripper_duration=1.0):
+    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (0.0, 0.0, 0.0, 1.0)), estimate_speed=0.2, gripper_duration=1.0):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
@@ -449,6 +450,11 @@ class BaseRobot:
         # Initialize or continue the grasping process
         if not hasattr(self, '_grasp_step'):
             self._grasp_step = 0  # Initialize the grasp step
+            if not hasattr(self, 'grasp_start_times'):
+                self.grasp_start_times = []  # Record grasp start times
+                self.grasp_end_times = []  # Record grasp end times
+            self.grasp_start_times.append(len(self.joint_position_log))  # Record the current start time for plot
+
             self.pose_over_target = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Position above the target
             self.tcp_target_pose = tcp_target_pose
 
@@ -547,6 +553,7 @@ class BaseRobot:
                 del self._grasp_step  # Cleanup the process state
                 del self._tcp_trajectory
                 del self._trajectory_index
+                self.grasp_end_times.append(len(self.joint_position_log))  # Record the current end time for plot
                 return True  # Grasping process is complete
 
         return False  # Grasping process not yet complete
@@ -934,7 +941,7 @@ class BaseRobot:
                 parentObjectUniqueId=self.robot_id, parentLinkIndex=link_index
             )
 
-    def visualize_tcp_trajectory(self, color_target=[1, 0, 0], color_actual=[0, 1, 0], line_width=3.0, line_duration=5):
+    def visualize_tcp_trajectory(self, color_target=[0, 1, 0], color_actual=[1, 0, 0], line_width=3.0, line_duration=5):
         """
         Visualize the TCP target and actual trajectories using debug lines.
         
@@ -982,31 +989,33 @@ class BaseRobot:
         self.target_gripper_position_log.append(self._gripper_target_position)
 
     ############### plot ###############
-    def plot_log_variables(self, variables=None):
+    def plot_log_variables(self, variables=None, savefig=False, log_dir=None):
         """
         Plot selected variables from the log. If no specific variables are provided, all logs will be plotted.
 
         Args:
             variables (list): List of variables to plot. Possible values are 'arm_joint_position', 'arm_joint_velocity', 'tcp_position', 'tcp_velocity', 'gripper_position'.
+            savefig (bool): If or not to save the figs.
+            log_dir (str): The path to save the figs.
         """
         if variables is None:
             variables = ['arm_joint_position', 'arm_joint_velocity', 'tcp_position', 'tcp_velocity', 'gripper_position']  # Plot all if no specific selection
 
         if 'arm_joint_position' in variables:
-            self.plot_arm_joint_position()
+            self.plot_arm_joint_position(savefig=savefig, log_dir=log_dir)
         if 'arm_joint_velocity' in variables:
-            self.plot_arm_joint_velocity()
+            self.plot_arm_joint_velocity(savefig=savefig, log_dir=log_dir)
         if 'tcp_position' in variables:
-            self.plot_tcp_position()
+            self.plot_tcp_position(savefig=savefig, log_dir=log_dir)
         if 'tcp_velocity' in variables:
-            self.plot_tcp_velocity()
+            self.plot_tcp_velocity(savefig=savefig, log_dir=log_dir)
         if 'gripper_position' in variables:
-            self.plot_gripper_position()
+            self.plot_gripper_position(savefig=savefig, log_dir=log_dir)
 
         # After all plots are created, show them together
         plt.show()
 
-    def plot_arm_joint_position(self):
+    def plot_arm_joint_position(self, savefig=False, log_dir=None):
         """
         Plot the arm's joint-related position variables over time, including both actual and target values.
         Joint limits (lower and upper) are also plotted as yellow dotted lines.
@@ -1038,15 +1047,32 @@ class BaseRobot:
             axes[i].axhline(lower_limit, color='yellow', linestyle=':', label=f'Joint {i} Lower Limit')
             axes[i].axhline(upper_limit, color='yellow', linestyle=':', label=f'Joint {i} Upper Limit')
 
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i].set_title(f'Arm Joint {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
             axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'arm_joint_position.png')
+            plt.savefig(fig_path)
+
         plt.pause(0.001)
 
-    def plot_arm_joint_velocity(self):
+    def plot_arm_joint_velocity(self, savefig=False, log_dir=None):
         """
         Plot the arm's joint-related velocity variables over time, including both actual and target values.
         Joint velocity limits are also plotted as yellow dotted lines.
@@ -1077,15 +1103,32 @@ class BaseRobot:
             axes[i].axhline(-max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Min Velocity')
             axes[i].axhline(max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Max Velocity')
 
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i].set_title(f'Arm Joint {i} Velocity')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Velocity')
             axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'arm_joint_velocity.png')
+            plt.savefig(fig_path)
+
         plt.pause(0.001)
 
-    def plot_tcp_position(self):
+    def plot_tcp_position(self, savefig=False, log_dir=None):
         """
         Plot the TCP-related position variables over time, including both actual and target values.
         """
@@ -1109,6 +1152,16 @@ class BaseRobot:
         for i in range(3):
             axes[i].plot(timesteps, actual_positions[:, i], label=f'Actual {position_labels[i]} Position', linestyle='-', color='red')
             axes[i].plot(timesteps, target_positions[:, i], label=f'Target {position_labels[i]} Position', linestyle='--', color='green')
+
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i].set_title(f'TCP {position_labels[i]} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel(f'{position_labels[i]} Position')
@@ -1119,15 +1172,33 @@ class BaseRobot:
         for i in range(3):
             axes[i + 3].plot(timesteps, actual_orientations[:, i], label=f'Actual {orientation_labels[i]}', linestyle='-', color='red')
             axes[i + 3].plot(timesteps, target_orientations[:, i], label=f'Target {orientation_labels[i]}', linestyle='--', color='green')
+
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i + 3].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i + 3].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
             axes[i + 3].set_xlabel('Time (s)')
-            axes[i + 3].set_ylabel(f'{orientation_labels[i]} (degrees)')
+            axes[i + 3].set_ylabel(f'{orientation_labels[i]} (radians)')
             axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'tcp_position.png')
+            plt.savefig(fig_path)
+
         plt.pause(0.001)
 
-    def plot_tcp_velocity(self):
+    def plot_tcp_velocity(self, savefig=False, log_dir=None):
         """
         Plot the TCP-related velocity variables over time, including both actual and target values.
         """
@@ -1151,6 +1222,16 @@ class BaseRobot:
         for i in range(3):
             axes[i].plot(timesteps, actual_linear_velocities[:, i], label=f'Actual {linear_velocity_labels[i]}', linestyle='-', color='red')
             axes[i].plot(timesteps, target_linear_velocities[:, i], label=f'Target {linear_velocity_labels[i]}', linestyle='--', color='green')
+
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i].set_title(f'TCP {linear_velocity_labels[i]}')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel(f'{linear_velocity_labels[i]} (m/s)')
@@ -1161,18 +1242,36 @@ class BaseRobot:
         for i in range(3):
             axes[i + 3].plot(timesteps, actual_angular_velocities[:, i], label=f'Actual {angular_velocity_labels[i]}', linestyle='-', color='red')
             axes[i + 3].plot(timesteps, target_angular_velocities[:, i], label=f'Target {angular_velocity_labels[i]}', linestyle='--', color='green')
+            
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i + 3].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i + 3].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+            
             axes[i + 3].set_title(f'TCP {angular_velocity_labels[i]}')
             axes[i + 3].set_xlabel('Time (s)')
             axes[i + 3].set_ylabel(f'{angular_velocity_labels[i]} (rad/s)')
             axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'tcp_velocity.png')
+            plt.savefig(fig_path)
+
         plt.pause(0.001)
 
-    def plot_gripper_position(self):
+    def plot_gripper_position(self, savefig=False, log_dir=None):
         """
         Plot the gripper-related position variables over time, including both actual and target values.
-        This function supports any number of gripper DOFs (degrees of freedom).
+        This function supports any number of gripper DOFs (radians of freedom).
         """
         num_dofs = self.num_gripper_dofs  # Number of gripper DOFs
         timesteps = np.arange(len(self.gripper_position_log)) * self.timestep  # Convert to actual time
@@ -1198,10 +1297,27 @@ class BaseRobot:
             # Plot target gripper position for the i-th DOF
             axes[i].plot(timesteps, target_gripper_positions[:, i], label=f'Gripper DOF {i} Target Position', linestyle='--', color='green')
 
+            # If there are recorded grasp times, plot vertical lines for each grasp start and end time
+            if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
+                for start_time in self.grasp_start_times:
+                    grasp_start_time = start_time * self.timestep
+                    axes[i].axvline(x=grasp_start_time, color='blue', linestyle='--', label='Grasp Start')
+                for end_time in self.grasp_end_times:
+                    grasp_end_time = end_time * self.timestep
+                    axes[i].axvline(x=grasp_end_time, color='blue', linestyle='--', label='Grasp End')
+
             axes[i].set_title(f'Gripper DOF {i} Position')
             axes[i].set_xlabel('Time (s)')
             axes[i].set_ylabel('Position')
             axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
+
+        # Save the figure if requested
+        if savefig and log_dir:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)  # Create the directory if it doesn't exist
+            fig_path = os.path.join(log_dir, 'gripper_position.png')
+            plt.savefig(fig_path)
+
         plt.pause(0.001)
