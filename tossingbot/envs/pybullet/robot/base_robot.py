@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from collections import namedtuple
 from scipy.spatial.transform import Rotation as R
-from tossingbot.envs.pybullet.utils.math_utils import slerp, pose_distance, quaternion_to_euler
+from tossingbot.envs.pybullet.utils.math_utils import slerp, quaternion_to_euler
 
 class BaseRobot:
     """
