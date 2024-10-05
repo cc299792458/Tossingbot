@@ -455,112 +455,120 @@ class BaseRobot:
         Args:
             tcp_target_pose (list): Target TCP pose as [position, orientation].
             post_grasp_pose (list, optional): The TCP pose to move to after grasping for safety or further actions.
-        
+            estimate_speed (float): Speed for moving the TCP.
+            gripper_duration (float): Duration for opening/closing the gripper.
+
         Returns:
             bool: True if the grasping process is completed, False otherwise.
         """
         # Initialize or continue the grasping process
         if not hasattr(self, '_grasp_step'):
-            self._grasp_step = 0  # Initialize the grasp step
-            if not hasattr(self, 'grasp_start_times'):
-                self.grasp_start_times = []
-            self.grasp_start_times.append(len(self.joint_position_log))
-
-            # Pre grasp pose is a pose that above the target
-            self.pre_grasp_pose = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]
-            self.tcp_target_pose = tcp_target_pose
-
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pre_grasp_pose, estimate_speed=estimate_speed)
-            self._trajectory_index = 0  # Initialize trajectory index
+            self._initialize_grasp_process(tcp_target_pose, estimate_speed)
 
         # Step 1: Move to a position above the target
         if self._grasp_step == 0:
-            if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
-                self._trajectory_index += 1
-            else:
-                self._grasp_step = 1
-                # Generate the next trajectory to move down to the target pose
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pre_grasp_pose, self.tcp_target_pose, estimate_speed=estimate_speed)
-                self._trajectory_index = 0
-
-        # # Step 2: Open the gripper
-        # elif self._grasp_step == 1:
-        #     self.open_gripper()  # Open the gripper
-        #     if self._is_gripper_stopped():  # Check if the gripper has finished moving
-        #         self._grasp_step = 2  # Move to the next step
-        #     return False  # Grasping process not yet complete
+            self._move_to_pre_grasp_pose()
 
         # Step 2: Open the gripper
         if self._grasp_step == 1:
-            if not hasattr(self, '_open_gripper_step'):
-                self._open_gripper_step = 0
-                self._total_open_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
-            else:
-                self._open_gripper_step += 1
-            self.open_gripper()
-            if self._open_gripper_step >= self._total_open_gripper_steps:
-                self._grasp_step = 2
-                del self._open_gripper_step
-                del self._total_open_gripper_steps
-
+            self._open_gripper(gripper_duration)
+        
         # Step 3: Move down to the target position
         if self._grasp_step == 2:
-            if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
-                if self.gripper_control_mode == 'torque':
-                    self.open_gripper()
-                self._trajectory_index += 1
-            else:
-                self._grasp_step = 3
-
-        # # Step 4: Close the gripper to grasp the object
-        # elif self._grasp_step == 3:
-        #     self.close_gripper()  # Close the gripper
-        #     if self._is_gripper_stopped():  # Check if the gripper has finished moving
-        #         self._grasp_step = 4  # Move to the next step (post-grasp movement)
-        #         # Generate the trajectory to move to the post-grasp position (lifting up safely)
-        #         self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
-        #     return False  # Grasping process not yet complete
+            self._move_to_target_pose()
 
         # Step 4: Close the gripper to grasp the object
         if self._grasp_step == 3:
-            if not hasattr(self, '_close_gripper_step'):
-                self._close_gripper_step = 0
-                self._total_close_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
-            else:
-                self._close_gripper_step += 1
-            self.close_gripper()
-            if self._close_gripper_step >= self._total_close_gripper_steps:
-                self._grasp_step = 4
-                # Generate the trajectory to move to the post-grasp position (lifting up safely)
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
-                self._trajectory_index = 0
-                del self._close_gripper_step
-                del self._total_close_gripper_steps
-
-        # Step 5: Move to the post-grasp position
+            self._close_gripper(gripper_duration, post_grasp_pose, estimate_speed)
+        
+        # Step 5: Move to the post-grasp pose
         if self._grasp_step == 4:
-            # Move through the trajectory to the post-grasp position
-            if self._trajectory_index < len(self._tcp_trajectory):
-                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
-                if self.gripper_control_mode == 'torque':
-                    self.close_gripper()
-                self._trajectory_index += 1
-            else:
-                # Once reached, the grasping process is complete
-                del self._grasp_step
-                del self._tcp_trajectory
-                del self._trajectory_index
-                if not hasattr(self, 'grasp_end_times'):
-                    self.grasp_end_times = []
-                self.grasp_end_times.append(len(self.joint_position_log))
-                return True  # Grasping process is complete
+            return self._move_to_post_grasp_pose()
 
         return False  # Grasping process not yet complete
+
+    def _initialize_grasp_process(self, tcp_target_pose, estimate_speed):
+        """Initializes the grasp process."""
+        self._grasp_step = 0
+        if not hasattr(self, 'grasp_start_times'):
+            self.grasp_start_times = []
+        self.grasp_start_times.append(len(self.joint_position_log))
+
+        self.pre_grasp_pose = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Pose above the target
+        self.tcp_target_pose = tcp_target_pose
+
+        # Generate trajectory to pre-grasp position
+        self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pre_grasp_pose, estimate_speed=estimate_speed)
+        self._trajectory_index = 0
+
+    def _move_to_pre_grasp_pose(self):
+        """Moves to the pre-grasp pose."""
+        if self._trajectory_index < len(self._tcp_trajectory):
+            self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+            self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
+            self._trajectory_index += 1
+        else:
+            self._grasp_step = 1
+
+    def _open_gripper(self, gripper_duration):
+        """Opens the gripper."""
+        if not hasattr(self, '_open_gripper_step'):
+            self._open_gripper_step = 0
+            self._total_open_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
+        else:
+            self._open_gripper_step += 1
+
+        self.open_gripper()
+
+        if self._open_gripper_step >= self._total_open_gripper_steps:
+            self._grasp_step = 2
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.pre_grasp_pose, self.tcp_target_pose, estimate_speed=0.2)
+            self._trajectory_index = 0
+            del self._open_gripper_step, self._total_open_gripper_steps
+
+    def _move_to_target_pose(self):
+        """Moves to the target grasp pose."""
+        if self._trajectory_index < len(self._tcp_trajectory):
+            self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+            self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
+            self._trajectory_index += 1
+        else:
+            self._grasp_step = 3
+
+    def _close_gripper(self, gripper_duration, post_grasp_pose, estimate_speed):
+        """Closes the gripper to grasp the object."""
+        if not hasattr(self, '_close_gripper_step'):
+            self._close_gripper_step = 0
+            self._total_close_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
+        else:
+            self._close_gripper_step += 1
+
+        self.close_gripper()
+
+        if self._close_gripper_step >= self._total_close_gripper_steps:
+            self._grasp_step = 4
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
+            self._trajectory_index = 0
+            del self._close_gripper_step, self._total_close_gripper_steps
+
+    def _move_to_post_grasp_pose(self):
+        """Moves to the post-grasp pose."""
+        if self._trajectory_index < len(self._tcp_trajectory):
+            self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+            self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
+            self._trajectory_index += 1
+        else:
+            self._finalize_grasp_process()
+            return True
+
+        return False
+
+    def _finalize_grasp_process(self):
+        """Finalizes the grasp process."""
+        del self._grasp_step, self._tcp_trajectory, self._trajectory_index
+        if not hasattr(self, 'grasp_end_times'):
+            self.grasp_end_times = []
+        self.grasp_end_times.append(len(self.joint_position_log))
 
     # def throw(self, tcp_target_pose, tcp_target_velocity, Kp=5.0, count_threshold=2, max_delta_velocity=1.0):
     #     """
