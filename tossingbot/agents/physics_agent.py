@@ -1,15 +1,15 @@
+import cv2
 import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+import scipy.ndimage as ndimage
 import matplotlib.pyplot as plt
 
 from scipy.spatial.transform import Rotation as R
 from tossingbot.agents.base_agent import BaseAgent
 from tossingbot.utils.pytorch_utils import np_image_to_tensor
-from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.envs.pybullet.utils.math_utils import rotate_image_tensor
-from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 class PhysicsController:
     def __init__(self, r_h=0.6, r_z=0.4):
@@ -133,7 +133,7 @@ class PhysicsAgent(BaseAgent):
 
         return q_g, q_t
 
-    def predict(self, observation, n_rotations=16, phi_deg=45, episode_num=None):
+    def predict(self, observation, n_rotations=16, phi_deg=45, episode_num=None, use_heuristic=False):
         """
         Predict the best grasping and throwing actions based on the observation.
 
@@ -142,6 +142,7 @@ class PhysicsAgent(BaseAgent):
             n_rotations (int): Number of rotations to consider for grasping.
             phi_deg (float): Angle for throwing in degrees.
             episode_num (int, optional): The current episode number for epsilon decay.
+            use_heuristic (bool): If True, use the heuristic method to select the grasping pixel.
 
         Returns:
             tuple: (grasp_pixel_indices, post_grasp_poses, throw_poses, throw_velocities) and intermediate values.
@@ -159,8 +160,12 @@ class PhysicsAgent(BaseAgent):
         # Perform forward pass with rotations to get q_g, q_t, and affordances
         grasp_affordances, depth_heightmaps, q_g, q_t = self._compute_affordances(I_batch, v_magnitude_batch, n_rotations)
 
-        # Select grasping actions using epsilon-greedy exploration
-        grasp_pixel_indices = self._select_grasp_pixels(grasp_affordances)
+        if use_heuristic:
+            # Use the heuristic method to select grasp pixels
+            grasp_pixel_indices = self._grasp_heuristic(depth_heightmaps)
+        else:
+            # Select grasping actions using epsilon-greedy exploration
+            grasp_pixel_indices = self._select_grasp_pixels(grasp_affordances)
 
         # Compute post-grasp poses, throwing poses, and velocities
         post_grasp_poses, throw_poses, throw_velocities = self._compute_poses(p_batch, r_batch, v_batch, phi_deg)
@@ -222,8 +227,11 @@ class PhysicsAgent(BaseAgent):
             q_t.append(q_t_rotated_back.unsqueeze(1))
 
         # Concatenate q_g and q_t along the new rotation dimension
-        q_g = torch.cat(q_g, dim=1)
-        q_t = torch.cat(q_t, dim=1)
+        q_g = torch.cat(q_g, dim=1) # [B, R, C, H, W]
+        q_t = torch.cat(q_t, dim=1) # [B, R, C, H, W]
+
+        # Concatenate depth_heightmaps along the rotation dimension
+        depth_heightmaps = np.concatenate(depth_heightmaps, axis=1)  # [B, R, H, W]
 
         # Compute grasp affordances
         grasp_affordances = F.softmax(q_g, dim=2).detach().cpu().numpy()[:, :, 0, :, :]
@@ -292,6 +300,53 @@ class PhysicsAgent(BaseAgent):
         q_i_logits = q_g[torch.arange(q_g.shape[0]), grasp_pixel_indices[:, 0], :, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
         delta_i = q_t[torch.arange(q_t.shape[0]), grasp_pixel_indices[:, 0], 0, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
         return q_i_logits, delta_i
+    
+    def _grasp_heuristic(self, depth_heightmaps):
+        """
+        Apply the grasp heuristic to a batch of depth heightmaps and return the best grasp pixel indices.
+
+        Args:
+            depth_heightmaps (np.array): A batch of depth heightmaps with shape (B, R, H, W).
+            
+        Returns:
+            best_pix_indices (np.array): The best grasp pixel indices for each image in the batch with shape (B, 3) (r, h, w).
+        """
+        B, R, H, W = depth_heightmaps.shape  # Batch size, Rotations, Height, Width
+        grasp_predictions_batch = []
+
+        # Iterate over the batch
+        for b in range(B):
+            grasp_predictions = []
+
+            # Iterate over the rotations (R)
+            for rotate_idx in range(R):
+                rotated_heightmap = depth_heightmaps[b, rotate_idx, :, :]
+
+                # Create valid areas for grasping
+                valid_areas = np.zeros(rotated_heightmap.shape)
+                valid_areas[np.logical_and(
+                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, -25], order=0) > 0.02,
+                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, 25], order=0) > 0.02
+                )] = 1
+
+                # Apply a blur filter to smooth the valid areas
+                blur_kernel = np.ones((25, 25), np.float32) / 9
+                valid_areas = cv2.filter2D(valid_areas, -1, blur_kernel)
+
+                # No need to rotate back; store valid areas for this rotation
+                grasp_predictions.append(valid_areas)
+
+            # Stack predictions along the rotation axis
+            grasp_predictions = np.stack(grasp_predictions, axis=0)
+            grasp_predictions_batch.append(grasp_predictions)
+
+        # Stack all batch predictions [B, R, H, W]
+        grasp_predictions_batch = np.stack(grasp_predictions_batch, axis=0)
+
+        # Find the best grasp pixel index for each sample in the batch
+        best_pix_indices = np.array([np.unravel_index(np.argmax(grasp_predictions), grasp_predictions.shape) for grasp_predictions in grasp_predictions_batch])
+
+        return best_pix_indices
 
 ############### Visualization ###############
 def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):
@@ -352,77 +407,3 @@ def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):
     ax.legend()
 
     plt.show()
-
-def draw_arrow_on_last_channel(heightmap, start, end):
-    """
-    Modify the last channel of the heightmap to include an arrow shape.
-
-    Args:
-        heightmap (ndarray): Heightmap with shape (H, W, C) where the last channel is modified.
-        start (tuple): Starting point (x, y) of the arrow.
-        end (tuple): End point (x, y) of the arrow.
-    """
-    # Get heightmap dimensions
-    H, W, C = heightmap.shape
-
-    # Calculate the vector components for the arrow (direction from start to end)
-    arrow_length = max(abs(end[0] - start[0]), abs(end[1] - start[1]))
-    dx = (end[0] - start[0]) / arrow_length
-    dy = (end[1] - start[1]) / arrow_length
-
-    # Draw the arrow on the last channel (increment values along the arrow's path)
-    for i in range(int(arrow_length)):
-        x = int(start[0] + i * dx)
-        y = int(start[1] + i * dy)
-        if 0 <= x < W and 0 <= y < H:
-            heightmap[y, x, -1] = 1  # Modify the last channel to mark the arrow path
-
-    # Mark the arrowhead (using a simple cross to denote the arrowhead)
-    if 0 <= end[0] < W and 0 <= end[1] < H:
-        heightmap[end[1], end[0], -1] = 2  # Arrowhead is a stronger mark
-        if end[1] + 1 < H: heightmap[end[1] + 1, end[0], -1] = 2
-        if end[1] - 1 >= 0: heightmap[end[1] - 1, end[0], -1] = 2
-        if end[0] + 1 < W: heightmap[end[1], end[0] + 1, -1] = 2
-        if end[0] - 1 >= 0: heightmap[end[1], end[0] - 1, -1] = 2
-
-    return heightmap
-
-# Example usage
-if __name__ == '__main__':
-    r_h = 0.5
-    r_z = 0.5
-    target_pos = (2, 0, 0)  # Target position
-    phi = 0  # Launch angle
-
-    physics_controller = PhysicsController(r_h=r_h, r_z=r_z)
-    throw_pos, throw_vel = physics_controller.predict(target_pos, phi)
-
-    print(f"Throw position: {throw_pos}")
-    print(f"Throw velocity (linear): {throw_vel}")
-
-    # Plot the trajectory
-    plot_trajectory(throw_pos, throw_vel, target_pos)
-
-    # Initialize input data
-    heightmap = np.zeros([2, 80, 60, 4])  # 80x60 heightmap with 4 channels
-    start_point = (10, 20)  # Starting point of the arrow
-    end_point = (50, 60)  # End point of the arrow
-    heightmap = draw_arrow_on_last_channel(heightmap, start=start_point, end=end_point)
-    target_position = np.array([2.0, 0.0, 0.1])  # Target position in (x, y, z)
-
-    # Initialize modules and agent
-    perception_module = PerceptionModule()
-    grasp_module = GraspingModule()
-    throw_module = ThrowingModule()
-    agent = PhysicsAgent(
-        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
-        perception_module=perception_module,
-        grasping_module=grasp_module,
-        throwing_module=throw_module,
-        physics_controller=physics_controller
-    )
-
-    # Make prediction with observation
-    observation = [(heightmap, target_position)]
-    action, intermidiates = agent.predict(observation=observation, n_rotations=16)
-    plot_heightmaps(intermidiates['depth_heightmaps'])

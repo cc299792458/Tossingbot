@@ -10,7 +10,7 @@ from tossingbot.envs.pybullet.utils.objects_utils import (
     create_sphere,
     create_box, 
     create_cylinder, 
-    create_capsule,
+    create_hammer,
     random_color,
 )
 from tossingbot.envs.pybullet.utils.camera_utils import (
@@ -104,7 +104,7 @@ class TossObjects(BaseScene):
         # Default objects configuration
         default_objects_config = {
             "n_object": 1,
-            "object_types": ['sphere', 'box', 'capsule', 'cylindar'],
+            "object_types": ['ball', 'cube', 'rod', 'hammer'],
         }
         if objects_config is not None:
             default_objects_config.update(objects_config)
@@ -364,14 +364,16 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin,
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
-            if self.objects_config['object_types'][object_type] == 'sphere':
-                object_id = create_sphere(radius=0.02, position=[x, y, z], color=[1, 0, 0, 1])
-            elif self.objects_config['object_types'][object_type] == 'box':
-                object_id = create_box(half_extents=[0.02, 0.02, 0.02], position=[x, y, z], color=[0, 1, 0, 1])
-            elif self.objects_config['object_types'][object_type] == 'cylindar':
-                object_id = create_cylinder(radius=0.02, height=0.02, position=[x, y, z], color=[0, 0, 1, 1])
-            elif self.objects_config['object_types'][object_type] == 'capsule':
-                object_id = create_capsule(radius=0.02, height=0.02, position=[x, y, z], color=random_color())
+            if self.objects_config['object_types'][object_type] == 'ball':
+                object_id = create_sphere(position=[-0.2, 0.25, 0.2], radius=0.02, mass=0.1)
+            elif self.objects_config['object_types'][object_type] == 'cube':
+                object_id = create_box(position=[0.0, 0.25, 0.2], half_extents=[0.02, 0.02, 0.02], mass=0.1)
+            elif self.objects_config['object_types'][object_type] == 'rod':
+                object_id = create_cylinder(position=[0.2, 0.25, 0.2], radius=0.015, height=0.16, mass=0.1)
+            elif self.objects_config['object_types'][object_type] == 'hammer':
+                object_id = create_hammer(position=[0.0, 0.0, 0.2], orientation=[np.pi / 2, 0.0, 0.0], 
+                                          cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
+                                          color=random_color())
             
             # p.changeDynamics(object_id, -1, lateralFriction=2.0, rollingFriction=0.01)
 
@@ -410,15 +412,10 @@ class TossObjects(BaseScene):
 
         # Retrieve the depth value from the visual observation
         # grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
-
         grasp_z = 0.02
 
-        use_heuristic = self.task_config['use_heuristic'] and self.consecutive_grasp_failures >= self.task_config['consecutive_grasp_failures_threshold']
-        if not use_heuristic:
-            # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
-            self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
-        else:
-            self.grasp_pose = self.grasp_heuristic()
+        # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
+        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
 
     def post_simulation_process(self, completed_and_static):
         if completed_and_static and self.does_workspace_need_reset():
@@ -604,33 +601,33 @@ class TossObjects(BaseScene):
             
             return residual_velocity
 
-    def grasp_heuristic(self):
-        """
-        Grasp heuristic to help accelerate training.
-        """
-        chosen_object_id = None
-        min_distance = np.inf
-        workspace_position = self.scene_config['workspace_position']
-        workspace_x, workspace_y = workspace_position[0], workspace_position[1]
+    # def grasp_heuristic(self):
+    #     """
+    #     Grasp heuristic to help accelerate training.
+    #     """
+    #     chosen_object_id = None
+    #     min_distance = np.inf
+    #     workspace_position = self.scene_config['workspace_position']
+    #     workspace_x, workspace_y = workspace_position[0], workspace_position[1]
 
-        for object_id in self.object_ids:
-            object_pose = self.get_object_pose(object_id)
-            object_position = object_pose[0]
+    #     for object_id in self.object_ids:
+    #         object_pose = self.get_object_pose(object_id)
+    #         object_position = object_pose[0]
 
-            # Calculate the distance from the object to the center of the workspace
-            object_to_workspace_distance = np.linalg.norm([
-                object_position[0] - workspace_x, 
-                object_position[1] - workspace_y
-            ])
+    #         # Calculate the distance from the object to the center of the workspace
+    #         object_to_workspace_distance = np.linalg.norm([
+    #             object_position[0] - workspace_x, 
+    #             object_position[1] - workspace_y
+    #         ])
 
-            # Update the chosen object if this one is closer
-            if object_to_workspace_distance < min_distance:
-                chosen_object_id = object_id
-                min_distance = object_to_workspace_distance
+    #         # Update the chosen object if this one is closer
+    #         if object_to_workspace_distance < min_distance:
+    #             chosen_object_id = object_id
+    #             min_distance = object_to_workspace_distance
 
-        object_pose = self.get_object_pose(chosen_object_id)
+    #     object_pose = self.get_object_pose(chosen_object_id)
 
-        return object_pose
+    #     return object_pose
 
     def compute_throw_velocity(self, landing_position, g=9.81):
         """
@@ -688,6 +685,10 @@ class TossObjects(BaseScene):
             "grasp_success": self.grasp_success,
             "object_id": self.grasped_object_id,
             "throw_success": self.throw_success,
+            "next_grasp_with_heuristic": (
+            self.task_config['use_heuristic'] and 
+            self.consecutive_grasp_failures >= self.task_config['consecutive_grasp_failures_threshold']
+            )
         }
         
     def check_grasp_success(self):

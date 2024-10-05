@@ -119,11 +119,11 @@ if __name__ == '__main__':
     # Create objects in the simulation
     create_plane()
     
-    create_box(position=[0.0, 0.25, 0.2], half_extents=[0.02, 0.02, 0.02], mass=0.1)
     create_sphere(position=[-0.2, 0.25, 0.2], radius=0.02, mass=0.1)
+    create_box(position=[0.0, 0.25, 0.2], half_extents=[0.02, 0.02, 0.02], mass=0.1)
     create_cylinder(position=[0.2, 0.25, 0.2], radius=0.015, height=0.16, mass=0.1)
     create_hammer(position=[0.0, 0.0, 0.2], orientation=[np.pi / 2, 0.0, 0.0], 
-                  cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125])
+                  cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], color=random_color())
 
     # Example: Load a mesh from an .obj file
     for i in range(8):
