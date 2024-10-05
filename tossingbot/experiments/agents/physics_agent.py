@@ -33,7 +33,7 @@ if __name__ == '__main__':
     p_controller = PhysicsController()
     agent = PhysicsAgent(device='cpu', perception_module=p_module, grasping_module=g_module, throwing_module=t_module, physics_controller=p_controller)
 
-    action, intermidiates = agent.predict(observation=[(np.zeros([80, 60, 4]), [1.0, 0.0, 0.2])])
+    action, intermidiates = agent.predict(observation=[(np.zeros([80, 60, 4]), [1.25, 0.0, 0.2])])
 
     grasp_pixel_indice, post_grasp_pose, throw_pose, throw_velocity = action[0]
 

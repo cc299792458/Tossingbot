@@ -29,14 +29,18 @@ if __name__ == '__main__':
     position = [0.3, -0.3, 0.02]
     create_sphere(radius=0.02, position=position)
 
+    post_grasp_pose=([0.3, 0.0, 0.1], [0.0, 0.0, 0.0, 1.0])
+    throw_pose = ([0.6, 0.0, 0.4], [0., -0.38268343, 0.0, 0.92387953])
+    throw_velocity = ([2.0, 0.0, 2.0], [0.0, 0.0, 0.0])
+
     grasp_complete = False
     throw_complete = False
 
     while True:
         if not grasp_complete:  # Grasp the sphere
-            grasp_complete = robot.grasp(tcp_target_pose=[position, [0.0, 0.0, 0.0, 1.0]])
-        # elif not throw_complete:  # Throw the shpere 
-        #     throw_complete = robot.throw()
+            grasp_complete = robot.grasp(tcp_target_pose=[position, [0.0, 0.0, 0.0, 1.0]], post_grasp_pose=post_grasp_pose)
+        elif not throw_complete:  # Throw the shpere
+            throw_complete = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_velocity)
         else:
             robot.plot_log_variables(savefig=True, log_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"))
             break

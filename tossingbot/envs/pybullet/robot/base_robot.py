@@ -116,8 +116,8 @@ class BaseRobot:
             joint_friction = info[7]
             joint_lower_limit = info[8]
             joint_upper_limit = info[9]
-            joint_max_force = info[10]
-            joint_max_velocity = info[11]
+            joint_max_force = info[10] * 10
+            joint_max_velocity = info[11] * 10
             is_controllable = (joint_type != p.JOINT_FIXED)
 
             if is_controllable:
@@ -463,30 +463,27 @@ class BaseRobot:
         if not hasattr(self, '_grasp_step'):
             self._grasp_step = 0  # Initialize the grasp step
             if not hasattr(self, 'grasp_start_times'):
-                self.grasp_start_times = []  # Record grasp start times
-            self.grasp_start_times.append(len(self.joint_position_log))  # Record the current start time for plot
+                self.grasp_start_times = []
+            self.grasp_start_times.append(len(self.joint_position_log))
 
-            self.pose_over_target = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Position above the target
+            # Pre grasp pose is a pose that above the target
+            self.pre_grasp_pose = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]
             self.tcp_target_pose = tcp_target_pose
 
-            # Generate trajectory for moving to the position above the target
-            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pose_over_target, estimate_speed=estimate_speed)
+            self._tcp_trajectory = self._generate_tcp_trajectory(self.get_tcp_pose(), self.pre_grasp_pose, estimate_speed=estimate_speed)
             self._trajectory_index = 0  # Initialize trajectory index
 
         # Step 1: Move to a position above the target
         if self._grasp_step == 0:
-            # Move through the trajectory to the position above the target
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
                 self._trajectory_index += 1
             else:
-                # Once reached, move to the next step (Step 2)
                 self._grasp_step = 1
-                self._trajectory_index = 0  # Reset for the next trajectory
                 # Generate the next trajectory to move down to the target pose
-                self._tcp_trajectory = self._generate_tcp_trajectory(self.pose_over_target, self.tcp_target_pose, estimate_speed=estimate_speed)
-            return False  # Grasping process not yet complete
+                self._tcp_trajectory = self._generate_tcp_trajectory(self.pre_grasp_pose, self.tcp_target_pose, estimate_speed=estimate_speed)
+                self._trajectory_index = 0
 
         # # Step 2: Open the gripper
         # elif self._grasp_step == 1:
@@ -496,33 +493,28 @@ class BaseRobot:
         #     return False  # Grasping process not yet complete
 
         # Step 2: Open the gripper
-        elif self._grasp_step == 1:
+        if self._grasp_step == 1:
             if not hasattr(self, '_open_gripper_step'):
                 self._open_gripper_step = 0
                 self._total_open_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
             else:
                 self._open_gripper_step += 1
-            self.open_gripper()  # Open the gripper
+            self.open_gripper()
             if self._open_gripper_step >= self._total_open_gripper_steps:
-                self._grasp_step = 2  # Move to the next step
+                self._grasp_step = 2
                 del self._open_gripper_step
                 del self._total_open_gripper_steps
-            return False  # Grasping process not yet complete
 
         # Step 3: Move down to the target position
-        elif self._grasp_step == 2:
-            # Move through the trajectory to the target position
+        if self._grasp_step == 2:
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the current setpoint for the TCP
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)
                 if self.gripper_control_mode == 'torque':
                     self.open_gripper()
                 self._trajectory_index += 1
             else:
-                # Once reached the target, move to the next step (Step 4)
                 self._grasp_step = 3
-                self._trajectory_index = 0  # Reset for the next trajectory
-            return False  # Grasping process not yet complete
 
         # # Step 4: Close the gripper to grasp the object
         # elif self._grasp_step == 3:
@@ -534,24 +526,23 @@ class BaseRobot:
         #     return False  # Grasping process not yet complete
 
         # Step 4: Close the gripper to grasp the object
-        elif self._grasp_step == 3:
+        if self._grasp_step == 3:
             if not hasattr(self, '_close_gripper_step'):
                 self._close_gripper_step = 0
                 self._total_close_gripper_steps = math.ceil(gripper_duration * self.sim_step_per_ctrl_step)
             else:
                 self._close_gripper_step += 1
-            self.close_gripper()  # Close the gripper
+            self.close_gripper()
             if self._close_gripper_step >= self._total_close_gripper_steps:
-                self._grasp_step = 4  # Move to the next step (post-grasp movement)
+                self._grasp_step = 4
                 # Generate the trajectory to move to the post-grasp position (lifting up safely)
                 self._tcp_trajectory = self._generate_tcp_trajectory(self.tcp_target_pose, post_grasp_pose, estimate_speed=estimate_speed)
+                self._trajectory_index = 0
                 del self._close_gripper_step
                 del self._total_close_gripper_steps
 
-            return False  # Grasping process not yet complete
-
         # Step 5: Move to the post-grasp position
-        elif self._grasp_step == 4:
+        if self._grasp_step == 4:
             # Move through the trajectory to the post-grasp position
             if self._trajectory_index < len(self._tcp_trajectory):
                 self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
@@ -561,147 +552,29 @@ class BaseRobot:
                 self._trajectory_index += 1
             else:
                 # Once reached, the grasping process is complete
-                del self._grasp_step  # Cleanup the process state
+                del self._grasp_step
                 del self._tcp_trajectory
                 del self._trajectory_index
                 if not hasattr(self, 'grasp_end_times'):
-                    self.grasp_end_times = []  # Record grasp end times
-                self.grasp_end_times.append(len(self.joint_position_log))  # Record the current end time for plot
+                    self.grasp_end_times = []
+                self.grasp_end_times.append(len(self.joint_position_log))
                 return True  # Grasping process is complete
 
         return False  # Grasping process not yet complete
 
-    def throw(self, tcp_target_pose, tcp_target_velocity, Kp=5.0, count_threshold=2, max_delta_velocity=1.0):
-        """
-        Perform a throwing action with three stages: 
-        1. Move to the release point with a target velocity while correcting deviations.
-        2. Release the object by opening the gripper while maintaining the current velocity.
-        3. Decelerate the arm after the release to zero velocity.
-
-        Args:
-            tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
-            tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
-            Kp (float): Gain for correcting the deviation from the target pose.
-            count_threshold (int): Number of consecutive times distance increases before moving to the next step.
-            max_delta_velocity (float): Max delta velocity when accelerating to the tcp target velocity.
-
-        Returns:
-            bool: True if the throwing process is completed, False otherwise.
-        """
-        # Initialize or continue the throwing process
-        if not hasattr(self, '_throw_step'):
-            # Stage 0: Set initial conditions for the throwing process
-            self._throw_step = 0
-            # Log the throw start time
-            if not hasattr(self, 'throw_start_times'):
-                self.throw_start_times = []  # List to store throw start times
-            self.throw_start_times.append(len(self.joint_position_log))  # Record the start time
-            
-            self.tcp_target_pose = tcp_target_pose
-            self.tcp_target_velocity = tcp_target_velocity
-
-        # Stage 1: Move to the release point with velocity, correcting deviations
-        if self._throw_step == 0:
-            current_pose = self.get_tcp_pose()  # Get the current TCP pose
-            position_error = np.array(self.tcp_target_pose[0]) - np.array(current_pose[0])  # Position error
-            
-            # Track consecutive increases in distance to prevent the robot from crashing when missing the target
-            distance_to_target = np.linalg.norm(position_error)
-            if not hasattr(self, '_prev_distance_to_target'):
-                self._prev_distance_to_target = distance_to_target
-                self._dist_increase_counter = 0
-            else:
-                if distance_to_target > self._prev_distance_to_target:
-                    self._dist_increase_counter += 1
-                else:
-                    self._dist_increase_counter = 0
-                self._prev_distance_to_target = distance_to_target
-
-            # Compute orientation error using quaternion difference
-            current_orientation = R.from_quat(current_pose[1])
-            target_orientation = R.from_quat(self.tcp_target_pose[1])
-            orientation_error_axis_angle = (target_orientation * current_orientation.inv()).as_rotvec()
-
-            # Apply corrections to linear and angular velocities
-            corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + Kp * position_error
-            corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + Kp * orientation_error_axis_angle
-
-            # Increase the velocity gradually to avoid excessive acceleration
-            current_linear_velocity, current_angular_velocity = self.get_tcp_velocity()
-            linear_velocity_error = np.array(self.tcp_target_velocity[0]) - np.array(current_linear_velocity)
-
-            # Calculate the change in velocities
-            delta_linear_velocity = corrected_linear_velocity - current_linear_velocity
-            delta_angular_velocity = corrected_angular_velocity - current_angular_velocity
-
-            # Update the target velocities based on delta velocities
-            if np.linalg.norm(delta_linear_velocity) > max_delta_velocity:
-                target_linear_velocity = current_linear_velocity + max_delta_velocity * delta_linear_velocity / np.linalg.norm(delta_linear_velocity)
-            else:
-                target_linear_velocity = corrected_linear_velocity
-
-            if np.linalg.norm(delta_angular_velocity) > max_delta_velocity:
-                target_angular_velocity = current_angular_velocity + max_delta_velocity * delta_angular_velocity / np.linalg.norm(delta_angular_velocity)
-            else:
-                target_angular_velocity = corrected_angular_velocity
-
-            # Use velocity IK to set joint velocities
-            joint_velocities = self.velocity_ik(target_linear_velocity, target_angular_velocity)
-            self.set_arm_joint_velocity_target(joint_velocities)
-
-            # Check if position error and velocity error is small enough to move to the next stage
-            if np.linalg.norm(position_error) < 0.05 and np.linalg.norm(linear_velocity_error) < 0.1 * np.linalg.norm(self.tcp_target_velocity[0]):
-                self._throw_step = 1
-                self._open_threshold = max(self.get_gripper_position()) + 0.002
-                del self._prev_distance_to_target
-                del self._dist_increase_counter
-
-                return False  # Throwing not yet complete
-            # Deviating from the target indicates a failed throw, so stop it immediately.
-            elif self._dist_increase_counter > count_threshold:
-                self._throw_step = 2
-                del self._prev_distance_to_target
-                del self._dist_increase_counter
-                self._open_threshold = None
-
-                return False  # Throwing not yet complete
-
-        # Stage 2: Release the object by opening the gripper
-        elif self._throw_step == 1:
-            joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
-            self.set_arm_joint_velocity_target(joint_velocities)
-
-            self.open_gripper()
-            if self._is_gripper_open(open_threshold=self._open_threshold):
-                self._throw_step = 2
-                return False  # Throwing not yet complete
-
-        # Stage 3: Decelerate the arm by reducing velocity to zero
-        elif self._throw_step == 2:
-            self.set_arm_joint_velocity_target(np.zeros([self.num_arm_dofs]))
-            joint_velocities = self.get_arm_joint_velocity()
-            if all(abs(vel) < 0.01 for vel in joint_velocities):
-                del self._throw_step
-                del self._open_threshold
-                if not hasattr(self, 'throw_end_times'):
-                    self.throw_end_times = []  # List to store throw end times
-                self.throw_end_times.append(len(self.joint_position_log))  # Record the end time
-                return True  # Throwing process complete
-
-        return False  # Throwing process not yet complete
-
-    # def throw(self, tcp_target_pose, tcp_target_velocity, estimate_speed=0.5):
+    # def throw(self, tcp_target_pose, tcp_target_velocity, Kp=5.0, count_threshold=2, max_delta_velocity=1.0):
     #     """
     #     Perform a throwing action with three stages: 
-    #     1. Move to the release point with a target velocity.
+    #     1. Move to the release point with a target velocity while correcting deviations.
     #     2. Release the object by opening the gripper while maintaining the current velocity.
-    #     3. Decelerate the arm after the release.
+    #     3. Decelerate the arm after the release to zero velocity.
 
     #     Args:
     #         tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
     #         tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
-    #         deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
-    #         estimate_speed (float): Speed used to estimate the time for trajectory generation.
+    #         Kp (float): Gain for correcting the deviation from the target pose.
+    #         count_threshold (int): Number of consecutive times distance increases before moving to the next step.
+    #         max_delta_velocity (float): Max delta velocity when accelerating to the tcp target velocity.
 
     #     Returns:
     #         bool: True if the throwing process is completed, False otherwise.
@@ -709,69 +582,212 @@ class BaseRobot:
     #     # Initialize or continue the throwing process
     #     if not hasattr(self, '_throw_step'):
     #         # Stage 0: Set initial conditions for the throwing process
-    #         self._throw_step = 0  # Initialize the throw step
+    #         self._throw_step = 0
+    #         # Log the throw start time
+    #         if not hasattr(self, 'throw_start_times'):
+    #             self.throw_start_times = []  # List to store throw start times
+    #         self.throw_start_times.append(len(self.joint_position_log))  # Record the start time
+            
     #         self.tcp_target_pose = tcp_target_pose
     #         self.tcp_target_velocity = tcp_target_velocity
 
-    #         # Stage 1: Generate the trajectory towards the release point (target pose with velocity)
-    #         self._tcp_trajectory = self._generate_tcp_trajectory(
-    #             self.get_tcp_pose(),            # Start at the current TCP pose
-    #             self.tcp_target_pose,           # Move to the target pose
-    #             start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),  # Starting velocity is zero (from rest)
-    #             target_tcp_vel=tcp_target_velocity,  # End with the specified target velocity
-    #             estimate_speed=estimate_speed   # Use estimated speed for trajectory timing
-    #         )
-    #         self._trajectory_index = 0  # Initialize the trajectory index
-
-    #     # Stage 1: Move to the release point with the target velocity
+    #     # Stage 1: Move to the release point with velocity, correcting deviations
     #     if self._throw_step == 0:
-    #         if self._trajectory_index < len(self._tcp_trajectory):
-    #             # Move step by step along the trajectory towards the release point
-    #             self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
-    #             self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the TCP to the current subtarget
-    #             self._trajectory_index += 1
+    #         current_pose = self.get_tcp_pose()  # Get the current TCP pose
+    #         position_error = np.array(self.tcp_target_pose[0]) - np.array(current_pose[0])  # Position error
+            
+    #         # Track consecutive increases in distance to prevent the robot from crashing when missing the target
+    #         distance_to_target = np.linalg.norm(position_error)
+    #         if not hasattr(self, '_prev_distance_to_target'):
+    #             self._prev_distance_to_target = distance_to_target
+    #             self._dist_increase_counter = 0
     #         else:
-    #             # Once the release point is reached, switch to velocity control for release
+    #             if distance_to_target > self._prev_distance_to_target:
+    #                 self._dist_increase_counter += 1
+    #             else:
+    #                 self._dist_increase_counter = 0
+    #             self._prev_distance_to_target = distance_to_target
+
+    #         # Compute orientation error using quaternion difference
+    #         current_orientation = R.from_quat(current_pose[1])
+    #         target_orientation = R.from_quat(self.tcp_target_pose[1])
+    #         orientation_error_axis_angle = (target_orientation * current_orientation.inv()).as_rotvec()
+
+    #         # Apply corrections to linear and angular velocities
+    #         corrected_linear_velocity = np.array(self.tcp_target_velocity[0]) + Kp * position_error
+    #         corrected_angular_velocity = np.array(self.tcp_target_velocity[1]) + Kp * orientation_error_axis_angle
+
+    #         # Increase the velocity gradually to avoid excessive acceleration
+    #         current_linear_velocity, current_angular_velocity = self.get_tcp_velocity()
+    #         linear_velocity_error = np.array(self.tcp_target_velocity[0]) - np.array(current_linear_velocity)
+
+    #         # Calculate the change in velocities
+    #         delta_linear_velocity = corrected_linear_velocity - current_linear_velocity
+    #         delta_angular_velocity = corrected_angular_velocity - current_angular_velocity
+
+    #         # Update the target velocities based on delta velocities
+    #         if np.linalg.norm(delta_linear_velocity) > max_delta_velocity:
+    #             target_linear_velocity = current_linear_velocity + max_delta_velocity * delta_linear_velocity / np.linalg.norm(delta_linear_velocity)
+    #         else:
+    #             target_linear_velocity = corrected_linear_velocity
+
+    #         if np.linalg.norm(delta_angular_velocity) > max_delta_velocity:
+    #             target_angular_velocity = current_angular_velocity + max_delta_velocity * delta_angular_velocity / np.linalg.norm(delta_angular_velocity)
+    #         else:
+    #             target_angular_velocity = corrected_angular_velocity
+
+    #         # Use velocity IK to set joint velocities
+    #         joint_velocities = self.velocity_ik(target_linear_velocity, target_angular_velocity)
+    #         self.set_arm_joint_velocity_target(joint_velocities)
+
+    #         # Check if position error and velocity error is small enough to move to the next stage
+    #         if np.linalg.norm(position_error) < 0.05 and np.linalg.norm(linear_velocity_error) < 0.1 * np.linalg.norm(self.tcp_target_velocity[0]):
     #             self._throw_step = 1
+    #             self._open_threshold = max(self.get_gripper_position()) + 0.002
+    #             del self._prev_distance_to_target
+    #             del self._dist_increase_counter
+
+    #             return False  # Throwing not yet complete
+    #         # Deviating from the target indicates a failed throw, so stop it immediately.
+    #         elif self._dist_increase_counter > count_threshold:
+    #             self._throw_step = 2
+    #             del self._prev_distance_to_target
+    #             del self._dist_increase_counter
+    #             self._open_threshold = None
+
     #             return False  # Throwing not yet complete
 
-    #     # Stage 2: Release the object by opening the gripper while maintaining the velocity
+    #     # Stage 2: Release the object by opening the gripper
     #     elif self._throw_step == 1:
-    #         # Apply velocity control using the velocity IK method
     #         joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
     #         self.set_arm_joint_velocity_target(joint_velocities)
 
-    #         # Open the gripper to release the object
     #         self.open_gripper()
-    #         if self._is_gripper_stopped():  # Check if the gripper has fully opened
-    #             self._throw_step = 2  # Move to the next step (deceleration phase)
+    #         if self._is_gripper_open(open_threshold=self._open_threshold):
+    #             self._throw_step = 2
     #             return False  # Throwing not yet complete
 
-    #     # Stage 3: Decelerate the arm by gradually reducing velocity to zero
+    #     # Stage 3: Decelerate the arm by reducing velocity to zero
     #     elif self._throw_step == 2:
-    #         # Apply a gradual deceleration to the arm by reducing the joint velocities
-    #         joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
-
-    #         # Gradually reduce each joint velocity
-    #         deceleration_factor = 0.9  # Factor to gradually reduce velocity each step
-    #         joint_velocities = [vel * deceleration_factor for vel in joint_velocities]
-
-    #         # Apply the reduced velocities to the arm joints
-    #         self.set_arm_joint_velocity_target(joint_velocities)
-
-    #         # Check if all joint velocities are close to zero
+    #         self.set_arm_joint_velocity_target(np.zeros([self.num_arm_dofs]))
+    #         joint_velocities = self.get_arm_joint_velocity()
     #         if all(abs(vel) < 0.01 for vel in joint_velocities):
-    #             self.set_arm_joint_velocity_target(np.zeros_like(joint_velocities))
-    #             del self._throw_step  # Cleanup after completion
-    #             return True  # Throwing process is complete
+    #             del self._throw_step
+    #             del self._open_threshold
+    #             if not hasattr(self, 'throw_end_times'):
+    #                 self.throw_end_times = []  # List to store throw end times
+    #             self.throw_end_times.append(len(self.joint_position_log))  # Record the end time
+    #             return True  # Throwing process complete
 
-    #         # Update the current velocity for the next iteration
-    #         self.tcp_target_velocity = ([v * deceleration_factor for v in self.tcp_target_velocity[0]],
-    #                                     [v * deceleration_factor for v in self.tcp_target_velocity[1]])
+    #     return False  # Throwing process not yet complete
 
-    #     return False  # Throwing process is not complete
+    def throw(self, tcp_target_pose, tcp_target_velocity, settling_steps=3, open_gripper_steps=1):
+        """
+        Perform a throwing action with three stages: 
+        1. Move to the release point with a target velocity.
+        2. Release the object by opening the gripper while maintaining the current velocity.
+        3. Decelerate the arm after the release.
+
+        Args:
+            tcp_target_pose (list): Target TCP pose at the release point as [position, orientation].
+            tcp_target_velocity (list): Target velocity for the TCP at the release point (linear and angular).
+            deceleration_distance (float): Distance to move along the target velocity direction during the deceleration phase.
+            settling_steps (int): Steps used to stablize the TCP velocity before open the gripper.
+            open_gripper_steps (int): Steps waiting for open the gripper.
+
+        Returns:
+            bool: True if the throwing process is completed, False otherwise.
+        """
+        # Initialize or continue the throwing process
+        if not hasattr(self, '_throw_step'):
+            # Stage 0: Set initial conditions for the throwing process
+            self._throw_step = 0  # Initialize the throw step
+
+            # Log the throw start time
+            if not hasattr(self, 'throw_start_times'):
+                self.throw_start_times = []
+            self.throw_start_times.append(len(self.joint_position_log))
+
+            self.tcp_target_pose = tcp_target_pose
+            self.tcp_target_velocity = tcp_target_velocity
+
+            # Calculate the pre-throw position based on velocity and timestep
+            pre_throw_position = [
+                tcp_target_pose[0][i] - tcp_target_velocity[0][i] * self.control_timestep * settling_steps
+                for i in range(3)
+            ]
+            self.pre_throw_pose = (pre_throw_position, tcp_target_pose[1])
+
+            # Stage 1: Generate the trajectory towards the release point (target pose with velocity)
+            self._tcp_trajectory = self._generate_tcp_trajectory(
+                self.get_tcp_pose(),
+                self.pre_throw_pose,
+                start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+                target_tcp_vel=tcp_target_velocity,
+            )
+            self._trajectory_index = 0  # Initialize the trajectory index
+
+        # Stage 1: Move to the release point with the target velocity
+        if self._throw_step == 0:
+            # Move step by step along the trajectory towards the release point
+            if self._trajectory_index < len(self._tcp_trajectory):
+                self._tcp_target_pose, self._tcp_target_velocity = self._tcp_trajectory[self._trajectory_index]
+                self.set_tcp_pose_target(self._tcp_target_pose, self._tcp_target_velocity)  # Set the TCP to the current subtarget
+                self._trajectory_index += 1
+            else:
+                # Once the release point is reached, switch to velocity control for release
+                self._throw_step = 1
+                
+        # Stage 2: Release the object by opening the gripper while maintaining the velocity
+        if self._throw_step == 1:
+            if not hasattr(self, 'gripper_open_count'):
+                self.gripper_open_count = 0
+
+            self.gripper_open_count += 1
+            
+            # Apply velocity control using the velocity IK method
+            joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+            self.set_arm_joint_velocity_target(joint_velocities)
+            
+            # Calculate the target position for this step based on current velocity and remaining settling steps for log
+            target_pos, target_quat = tcp_target_pose
+            remaining_steps = settling_steps - self.gripper_open_count
+            current_target_pos = [
+                target_pos[i] - self.tcp_target_velocity[0][i] * self.control_timestep * remaining_steps
+                for i in range(3)
+            ]
+            self._tcp_target_pose = (current_target_pos, target_quat)
+            self._tcp_target_velocity = self.tcp_target_velocity
+
+            # Wait for settling velocity
+            if self.gripper_open_count >= settling_steps:
+                # Open the gripper to release the object
+                self.open_gripper()
+
+            # Wait for the object has already been released
+            if self.gripper_open_count >= settling_steps + open_gripper_steps:
+                self._throw_step = 2
+                del self.gripper_open_count
+                
+        # Stage 3: Decelerate the arm by gradually reducing velocity to zero
+        if self._throw_step == 2:
+            joint_velocities = self.get_arm_joint_velocity()
+            self.set_arm_joint_velocity_target(np.zeros_like(joint_velocities))
+
+            self._tcp_target_velocity = np.zeros([2, 3])
+
+            # Check if all joint velocities are close to zero
+            if all(abs(vel) < 0.01 for vel in joint_velocities):
+                del self._throw_step
+                if not hasattr(self, 'throw_end_times'):
+                    self.throw_end_times = []
+                self.throw_end_times.append(len(self.joint_position_log))
+
+                return True  # Throwing process is complete
+            
+        return False  # Throwing process is not complete
     
-    def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel=None, target_tcp_vel=None, estimate_speed=0.5):
+    def _generate_tcp_trajectory(self, start_tcp_pose, target_tcp_pose, start_tcp_vel=None, target_tcp_vel=None, estimate_speed=None):
         """
         Generates a TCP trajectory from start to target pose using quintic polynomial interpolation for both position
         and orientation (converted to Euler angles), considering velocity information.
@@ -801,10 +817,23 @@ class BaseRobot:
         target_rot_vel = np.array(target_tcp_vel[1]) if target_tcp_vel is not None else np.zeros([3])
         
         # Estimate the time needed based on the distance and given speed
-        distance = np.linalg.norm(target_pos - start_pos)
-        time_estimate = distance / estimate_speed
-        
-        # Compute the number of steps based on control step size (defalult 1/20 seconds)
+        if estimate_speed is not None:
+            distance = np.linalg.norm(target_pos - start_pos)
+            time_estimate = distance / estimate_speed
+        else:
+            max_vel = np.array(target_trans_vel)
+            time_estimates = []
+            for dim in range(len(start_pos)):
+                if max_vel[dim] > 0:
+                    delta_pos = target_pos[dim] - start_pos[dim]
+                    time_estimate_vel_dim = (15.0 / 8.0) * (abs(delta_pos) / max_vel[dim])
+                    time_estimates.append(time_estimate_vel_dim)
+                else:
+                    time_estimates.append(np.array(0.0))
+            # Take the maximum duration across all dimensions
+            time_estimate = max(time_estimates)
+
+        # Compute the number of steps based on control step size (defalult 1/60 seconds)
         num_steps = int(time_estimate / self.control_timestep)
         
         # Generate quintic polynomial trajectory for linear positions and velocities
@@ -856,7 +885,7 @@ class BaseRobot:
         return subtargets
 
     def _generate_quintic_trajectory(self, start_s, end_s, start_v=None, end_v=None, start_acc=None, end_acc=None,
-                                 duration=None, max_vel=None, max_acc=None, num_steps=100):
+                                 duration=1.0, num_steps=100):
         """
         Generates a quintic polynomial trajectory for multiple dimensions (e.g., position components),
         considering maximum velocity and acceleration constraints.
@@ -868,9 +897,7 @@ class BaseRobot:
             end_v (float or np.ndarray, optional): Target velocities for each dimension. Defaults to 0 if None.
             start_acc (float or np.ndarray, optional): Initial accelerations for each dimension. Defaults to 0 if None.
             end_acc (float or np.ndarray, optional): Target accelerations for each dimension. Defaults to 0 if None.
-            duration (float, optional): Total duration of the trajectory. If None, it will be calculated based on max_vel and max_acc.
-            max_vel (float or np.ndarray, optional): Maximum allowable velocities for each dimension.
-            max_acc (float or np.ndarray, optional): Maximum allowable accelerations for each dimension.
+            duration (float): Total duration of the trajectory.
             num_steps (int): Number of points to sample along the trajectory.
 
         Returns:
@@ -887,33 +914,6 @@ class BaseRobot:
         end_v = np.zeros_like(end_s) if end_v is None else np.array(end_v)
         start_acc = np.zeros_like(start_s) if start_acc is None else np.array(start_acc)
         end_acc = np.zeros_like(end_s) if end_acc is None else np.array(end_acc)
-
-        # Convert max_vel and max_acc to numpy arrays if provided
-        if max_vel is not None:
-            max_vel = np.array(max_vel)
-        if max_acc is not None:
-            max_acc = np.array(max_acc)
-
-        # If duration is not provided or needs to be adjusted based on max_vel and max_acc
-        if duration is None or max_vel is not None or max_acc is not None:
-            durations = []
-            for dim in range(len(start_s)):
-                delta_s = end_s[dim] - start_s[dim]
-                # Initial estimates for duration based on max_vel and max_acc
-                duration_vel = 0.0
-                duration_acc = 0.0
-
-                if max_vel is not None and max_vel[dim] > 0:
-                    duration_vel = (15.0 / 8.0) * (abs(delta_s) / max_vel[dim])
-
-                if max_acc is not None and max_acc[dim] > 0:
-                    duration_acc = np.sqrt(10 * np.abs(delta_s) / (max_acc[dim] * np.sqrt(3)))
-
-                duration_dim = max(duration_vel, duration_acc, duration) if duration is not None else max(duration_vel, duration_acc)
-                durations.append(duration_dim)
-
-            # Take the maximum duration across all dimensions
-            duration = max(durations)
 
         # Initialize the trajectory for each dimension
         trajectory_s = np.zeros((num_steps, len(start_s)))
@@ -1115,6 +1115,11 @@ class BaseRobot:
             axes[i].axhline(lower_limit, color='yellow', linestyle=':', label=f'Joint {i} Lower Limit')
             axes[i].axhline(upper_limit, color='yellow', linestyle=':', label=f'Joint {i} Upper Limit')
 
+            axes[i].set_title(f'Arm Joint {i} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Position')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
                 for start_time in self.grasp_start_times:
@@ -1132,11 +1137,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-
-            axes[i].set_title(f'Arm Joint {i} Position')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel('Position')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
@@ -1180,6 +1180,11 @@ class BaseRobot:
             axes[i].axhline(-max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Min Velocity')
             axes[i].axhline(max_velocity, color='yellow', linestyle=':', label=f'Joint {i} Max Velocity')
 
+            axes[i].set_title(f'Arm Joint {i} Velocity')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Velocity')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
                 for start_time in self.grasp_start_times:
@@ -1197,11 +1202,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-
-            axes[i].set_title(f'Arm Joint {i} Velocity')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel('Velocity')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
@@ -1239,6 +1239,10 @@ class BaseRobot:
             max_force = self.joints[i].max_force
             axes[i].axhline(-max_force, color='yellow', linestyle=':', label=f'Joint {i} Min Torque')
             axes[i].axhline(max_force, color='yellow', linestyle=':', label=f'Joint {i} Max Torque')
+            axes[i].set_title(f'Arm Joint {i} Torque')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Torque (Nm)')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
@@ -1257,11 +1261,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-
-            axes[i].set_title(f'Arm Joint {i} Torque')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel('Torque (Nm)')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
@@ -1298,6 +1297,10 @@ class BaseRobot:
         for i in range(3):
             axes[i].plot(timesteps, actual_positions[:, i], label=f'Actual {position_labels[i]} Position', linestyle='-', color='red')
             axes[i].plot(timesteps, target_positions[:, i], label=f'Target {position_labels[i]} Position', linestyle='--', color='green')
+            axes[i].set_title(f'TCP {position_labels[i]} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel(f'{position_labels[i]} Position')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
@@ -1317,16 +1320,15 @@ class BaseRobot:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
 
-            axes[i].set_title(f'TCP {position_labels[i]} Position')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel(f'{position_labels[i]} Position')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
         # Plot orientations: roll, pitch, yaw
         orientation_labels = ['Roll', 'Pitch', 'Yaw']
         for i in range(3):
             axes[i + 3].plot(timesteps, actual_orientations[:, i], label=f'Actual {orientation_labels[i]}', linestyle='-', color='red')
             axes[i + 3].plot(timesteps, target_orientations[:, i], label=f'Target {orientation_labels[i]}', linestyle='--', color='green')
+            axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
+            axes[i + 3].set_xlabel('Time (s)')
+            axes[i + 3].set_ylabel(f'{orientation_labels[i]} (radians)')
+            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
@@ -1345,11 +1347,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i + 3].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-
-            axes[i + 3].set_title(f'TCP {orientation_labels[i]}')
-            axes[i + 3].set_xlabel('Time (s)')
-            axes[i + 3].set_ylabel(f'{orientation_labels[i]} (radians)')
-            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
@@ -1386,6 +1383,10 @@ class BaseRobot:
         for i in range(3):
             axes[i].plot(timesteps, actual_linear_velocities[:, i], label=f'Actual {linear_velocity_labels[i]}', linestyle='-', color='red')
             axes[i].plot(timesteps, target_linear_velocities[:, i], label=f'Target {linear_velocity_labels[i]}', linestyle='--', color='green')
+            axes[i].set_title(f'TCP {linear_velocity_labels[i]}')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel(f'{linear_velocity_labels[i]} (m/s)')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
@@ -1405,16 +1406,15 @@ class BaseRobot:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
 
-            axes[i].set_title(f'TCP {linear_velocity_labels[i]}')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel(f'{linear_velocity_labels[i]} (m/s)')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
         # Plot angular velocities: wx, wy, wz
         angular_velocity_labels = ['Wx', 'Wy', 'Wz']
         for i in range(3):
             axes[i + 3].plot(timesteps, actual_angular_velocities[:, i], label=f'Actual {angular_velocity_labels[i]}', linestyle='-', color='red')
             axes[i + 3].plot(timesteps, target_angular_velocities[:, i], label=f'Target {angular_velocity_labels[i]}', linestyle='--', color='green')
+            axes[i + 3].set_title(f'TCP {angular_velocity_labels[i]}')
+            axes[i + 3].set_xlabel('Time (s)')
+            axes[i + 3].set_ylabel(f'{angular_velocity_labels[i]} (rad/s)')
+            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
             
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
@@ -1433,11 +1433,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i + 3].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-            
-            axes[i + 3].set_title(f'TCP {angular_velocity_labels[i]}')
-            axes[i + 3].set_xlabel('Time (s)')
-            axes[i + 3].set_ylabel(f'{angular_velocity_labels[i]} (rad/s)')
-            axes[i + 3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
@@ -1479,6 +1474,11 @@ class BaseRobot:
             # Plot target gripper position for the i-th DOF
             axes[i].plot(timesteps, target_gripper_positions[:, i], label=f'Gripper DOF {i} Target Position', linestyle='--', color='green')
 
+            axes[i].set_title(f'Gripper DOF {i} Position')
+            axes[i].set_xlabel('Time (s)')
+            axes[i].set_ylabel('Position')
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
             # If there are recorded grasp times, plot vertical lines for each grasp start and end time
             if hasattr(self, 'grasp_start_times') and hasattr(self, 'grasp_end_times'):
                 for start_time in self.grasp_start_times:
@@ -1496,11 +1496,6 @@ class BaseRobot:
                 for end_time in self.throw_end_times:
                     throw_end_time = end_time * self.timestep
                     axes[i].axvline(x=throw_end_time, color='purple', linestyle='--', label='Throw End')
-
-            axes[i].set_title(f'Gripper DOF {i} Position')
-            axes[i].set_xlabel('Time (s)')
-            axes[i].set_ylabel('Position')
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit suptitle
 
