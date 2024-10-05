@@ -35,12 +35,15 @@ if __name__ == '__main__':
 
     grasp_complete = False
     throw_complete = False
+    wait_count = 0
 
     while True:
         if not grasp_complete:  # Grasp the sphere
             grasp_complete = robot.grasp(tcp_target_pose=[position, [0.0, 0.0, 0.0, 1.0]], post_grasp_pose=post_grasp_pose)
         elif not throw_complete:  # Throw the shpere
             throw_complete = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_velocity)
+        elif wait_count <= 60:
+            wait_count += 1
         else:
             robot.plot_log_variables(savefig=True, log_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs"))
             break
