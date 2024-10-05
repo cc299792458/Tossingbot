@@ -4,6 +4,7 @@
     The robot first grasps the sphere, then throws it to the target, and success is measured by the final position.
 """
 
+import os
 import time
 import numpy as np
 import pybullet as p
@@ -56,7 +57,7 @@ def load_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=3, n_co
 
     return box_ids, target_positions
 
-def run_throwing_experiment(robot, agent, target_positions, box_length=0.25, box_width=0.15, ball_radius=0.02, ball_mass=0.1):
+def run_throwing_experiment(robot, agent, target_positions, n_rows, n_cols, box_length=0.25, box_width=0.15, ball_radius=0.02, ball_mass=0.1):
     """
     Runs the throwing experiment where the robot first grasps a sphere and then throws it to different target positions.
     The PhysicsAgent calculates the post-grasp pose, throw pose, and throw velocity.
@@ -66,17 +67,22 @@ def run_throwing_experiment(robot, agent, target_positions, box_length=0.25, box
         robot: The robot instance (Panda) that will perform the grasp and throw.
         agent: The PhysicsAgent used to calculate the throw parameters.
         target_positions: List of target positions (x, y, z) where the sphere will be thrown.
+        n_rows: Number of rows in the box grid.
+        n_cols: Number of columns in the box grid.
         box_length, box_width: Dimensions of the target boxes.
         ball_radius: Radius of the sphere to be thrown.
         ball_mass: Mass of the sphere to be thrown.
 
     Returns:
-        success_list: A list of booleans indicating the success or failure of each throw.
+        success_matrix: A 2D matrix of shape (n_rows, n_cols) indicating success (True) or failure (False) for each throw.
     """
-    success_list = []
+    success_matrix = np.zeros((n_rows, n_cols), dtype=bool)
     debug_lines = []
 
-    for target_pos in tqdm(target_positions, desc="Running Throwing Experiment"):
+    for idx, target_pos in enumerate(tqdm(target_positions, desc="Running Throwing Experiment")):
+        row = idx // n_cols
+        col = idx % n_cols
+
         # Clear previous debug lines
         for line_id in debug_lines:
             p.removeUserDebugItem(line_id)
@@ -137,33 +143,50 @@ def run_throwing_experiment(robot, agent, target_positions, box_length=0.25, box
         # Check if the throw was successful by evaluating the final distance to the target
         ball_position_after_throw = p.getBasePositionAndOrientation(object_id)[0]
         success = x_min <= ball_position_after_throw[0] <= x_max and y_min <= ball_position_after_throw[1] <= y_max
-        success_list.append(success)
+        success_matrix[row, col] = success
 
         # Remove the sphere after the throw
         p.removeBody(object_id)
 
-    return success_list
+    return success_matrix
 
-def plot_throw_results(success_list):
+def plot_throw_results(success_matrix, x_points, y_points):
     """
-    Plots the success results of the throwing experiment.
-    
+    Plots the throwing success matrix. Successful throws are marked with 'O', failed throws with 'X'.
+
     Args:
-        success_list: A list of booleans showing the success or failure of each throw.
-    
+        success_matrix: A 2D matrix showing the success or failure of each throw.
+        x_points: The x coordinates of the grid.
+        y_points: The y coordinates of the grid.
+
     Returns:
         None
     """
-    fig, ax = plt.subplots()
-    x_positions = np.arange(len(success_list))
-
-    # Plot success (1) and failure (0)
-    ax.plot(x_positions, success_list, 'o-', label="Throw Success")
     
-    ax.set_xlabel('Throw Attempt')
-    ax.set_ylabel('Success (1) / Failure (0)')
-    ax.set_title('Throwing Results')
+    fig, ax = plt.subplots()
+    
+    # Plot success as 'O' and failure as 'X'
+    for i in range(len(y_points)):
+        for j in range(len(x_points)):
+            marker = 'O' if success_matrix[i, j] else 'X'
+            ax.text(x_points[j], y_points[i], marker, ha='center', va='center', fontsize=12)
+    
+    # Set the limits and labels
+    ax.set_xlim(min(x_points) - 0.05, max(x_points) + 0.05)
+    ax.set_ylim(min(y_points) - 0.05, max(y_points) + 0.05)
+    ax.set_xlabel('X Position')
+    ax.set_ylabel('Y Position')
+    ax.set_title('Throwing Results (O: Success, X: Failure)')
 
+    # Create directory if it doesn't exist
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # Save the plot to the logs directory
+    plot_filename = os.path.join(log_dir, "throwing_results.png")
+    plt.savefig(plot_filename)
+    
     plt.show()
 
 if __name__ == '__main__':
@@ -195,10 +218,12 @@ if __name__ == '__main__':
     agent = PhysicsAgent(device='cpu', perception_module=p_module, grasping_module=g_module, throwing_module=t_module, physics_controller=p_controller)
 
     # Run the throwing experiment
-    success_list = run_throwing_experiment(robot, agent, target_positions)
+    success_matrix = run_throwing_experiment(robot, agent, target_positions, n_rows=3, n_cols=3)
 
     # Plot the results
-    plot_throw_results(success_list)
+    x_points = [pos[0] for pos in target_positions[:3]]  # X coordinates for 3 columns
+    y_points = [pos[1] for pos in target_positions[::3]]  # Y coordinates for 3 rows
+    plot_throw_results(success_matrix, x_points, y_points)
 
     # Disconnect from the simulation
     p.disconnect()
