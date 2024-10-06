@@ -117,7 +117,8 @@ if __name__ == '__main__':
     grasp_criterion = nn.CrossEntropyLoss()
 
     # Optionally load the model
-    start_episode = load_model(agent, optimizer, log_dir)
+    start_episode = 0
+    # start_episode = load_model(agent, optimizer, log_dir, 'phyiscs_agent')
 
     # Main loop
     obs, info = env.reset()

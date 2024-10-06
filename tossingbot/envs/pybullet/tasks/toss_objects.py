@@ -70,6 +70,7 @@ class TossObjects(BaseScene):
             "workspace_length": 0.3,
             "workspace_width": 0.4,
             "workspace_position": [0.4, 0],
+            "workspace_thickness": 0.001,
             "box_length": 0.25,
             "box_width": 0.15,
             "box_height": 0.1,
@@ -233,7 +234,7 @@ class TossObjects(BaseScene):
             width (float): Width of the workspace.
             position (list): Center position [x, y] of the workspace.
         """
-        thickness = 0.001
+        thickness = self.scene_config['workspace_thickness']
         color = [0.8, 0.8, 0.8, 1.0]
         self.workspace_ids = []
         
@@ -348,7 +349,7 @@ class TossObjects(BaseScene):
                 p.removeBody(object_id)
 
         self.object_ids = []
-        thickness = 0.001
+        thickness = self.scene_config['workspace_thickness']
 
         for i in range(self.objects_config['n_object']):
             object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
@@ -418,7 +419,7 @@ class TossObjects(BaseScene):
 
         # Retrieve the depth value from the visual observation
         # grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
-        thickness = 0.001
+        thickness = self.scene_config['workspace_thickness']
         grasp_z = 0.02 + thickness
 
         # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
@@ -679,7 +680,8 @@ class TossObjects(BaseScene):
         if grasp_success:
             object_ids = [
                 object_id for object_id in self.object_ids 
-                if pose_distance(self.get_object_pose(object_id), self.robot.get_tcp_pose())[0] < 0.02
+                if pose_distance(self.get_object_pose(object_id), self.robot.get_tcp_pose())[0] < 0.1 
+                    and self.get_object_pose(object_id)[0][2] > 0.02 + self.scene_config['workspace_thickness'] + 0.001
             ]
             assert len(object_ids) <= 1, "There should be exactly 1 object grasped."
             if len(object_ids) == 0:

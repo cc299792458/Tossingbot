@@ -112,7 +112,7 @@ if __name__ == '__main__':
     use_gui = True
     n_rotations = 1
     phi_deg = 45  # Set phi_deg to 45 degrees
-    total_episodes = 100  # Reduced to a smaller number of episodes for heuristic testing
+    total_episodes = 100
 
     # Create list to track the history of grasp successes, throw successes, and object poses
     grasp_success_history = []
@@ -124,7 +124,8 @@ if __name__ == '__main__':
     env = TossObjects(
         use_gui=use_gui,
         scene_config={'box_length': 0.15},
-        camera_config={'n_rotations': n_rotations}
+        objects_config={"object_types": ['ball', 'cube']},
+        camera_config={'n_rotations': n_rotations},
     )
 
     # Networks
