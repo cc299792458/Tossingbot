@@ -48,10 +48,7 @@ def pose_distance(pose1, pose2):
     dot_product = np.clip(dot_product, -1.0, 1.0)
     orientation_distance = 2 * np.arccos(np.abs(dot_product))
 
-    return {
-        'position_distance': position_distance,
-        'orientation_distance': orientation_distance
-    }
+    return [position_distance, orientation_distance]
 
 def rotation_matrix_to_quaternion(rotation_matrix):
     """

@@ -34,15 +34,15 @@ def plot_success_rates(grasp_success_history, throw_success_history, total_episo
     # Episodes range
     episodes = range(len(grasp_success_history))
 
-    # Moving average over the last 10 episodes for grasp and throw success
-    avg_grasp_success = [np.mean(grasp_success_history[max(0, i-10):i+1]) for i in episodes]
-    avg_throw_success = [np.mean(throw_success_history[max(0, i-10):i+1]) for i in episodes]
+    # Moving average over the last 1000 episodes for grasp and throw success
+    avg_grasp_success = [np.mean(grasp_success_history[max(0, i-1000):i+1]) for i in episodes]
+    avg_throw_success = [np.mean(throw_success_history[max(0, i-1000):i+1]) for i in episodes]
 
     # Plotting
     plt.figure(figsize=(10, 5))
 
-    plt.plot(episodes, avg_grasp_success, label='Grasp Success Rate (Last 10)', color='blue')
-    plt.plot(episodes, avg_throw_success, label='Throw Success Rate (Last 10)', color='green')
+    plt.plot(episodes, avg_grasp_success, label='Grasp Success Rate (Last 1000)', color='blue')
+    plt.plot(episodes, avg_throw_success, label='Throw Success Rate (Last 1000)', color='green')
 
     plt.xlabel('Episodes')
     plt.ylabel('Success Rate')
@@ -72,8 +72,8 @@ if __name__ == '__main__':
     total_episodes = 100
 
     # Create deque to track the history of grasp and throw successes
-    grasp_success_history = deque(maxlen=10)
-    throw_success_history = deque(maxlen=10)
+    grasp_success_history = deque(maxlen=100)
+    throw_success_history = deque(maxlen=100)
 
     # Env
     env = TossObjects(
@@ -147,7 +147,7 @@ if __name__ == '__main__':
         if info['grasp_success']:
             throw_success_history.append(info['throw_success'])
 
-        # Compute average success rates over the last 10 episodes (or fewer if not enough episodes)
+        # Compute average success rates over the last 100 episodes (or fewer if not enough episodes)
         avg_grasp_success = np.mean(grasp_success_history)
         if info['grasp_success']:
             avg_throw_success = np.mean(throw_success_history)
@@ -183,12 +183,12 @@ if __name__ == '__main__':
             grasp_loss = grasp_criterion(q_i, y_i)
             loss = loss + grasp_loss
 
-            # # Throwing loss calculation (if ground truth residual is available)
-            # for (b, gt_residual_label) in enumerate(gt_residual_label_batch):
-            #     if gt_residual_label is not None:
-            #         delta_i_bar = torch.tensor(np.array(gt_residual_label), dtype=torch.float).to(device=device)
-            #         throw_loss = throw_criterion(delta_i[b], delta_i_bar)
-            #         loss = loss + throw_loss
+            # Throwing loss calculation (if ground truth residual is available)
+            for (b, gt_residual_label) in enumerate(gt_residual_label_batch):
+                if gt_residual_label is not None:
+                    delta_i_bar = torch.tensor(np.array(gt_residual_label), dtype=torch.float).to(device=device)
+                    throw_loss = throw_criterion(delta_i[b], delta_i_bar)
+                    loss = loss + throw_loss
 
             # Backpropagation for the batch
             optimizer.zero_grad()

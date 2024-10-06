@@ -3,10 +3,9 @@ import random
 import numpy as np
 import pybullet as p
 
-from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
 from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
-from tossingbot.envs.pybullet.utils.math_utils import yaw_to_quaternion
+from tossingbot.envs.pybullet.utils.math_utils import yaw_to_quaternion, pose_distance
 from tossingbot.envs.pybullet.utils.objects_utils import (
     create_sphere,
     create_box, 
@@ -677,10 +676,9 @@ class TossObjects(BaseScene):
     def check_grasp_success(self):
         grasp_success = not self.robot._is_gripper_closed(tolerance=1e-2)
         if grasp_success:
-            post_grasp_height = self.post_grasp_pose[0][2]
             object_ids = [
                 object_id for object_id in self.object_ids 
-                if self.get_object_pose(object_id)[0][2] > post_grasp_height - 0.1
+                if pose_distance(self.get_object_pose(object_id), self.robot.get_tcp_pose())[0] < 0.02
             ]
             assert len(object_ids) <= 1, "There should be exactly 1 object grasped."
             if len(object_ids) == 0:
