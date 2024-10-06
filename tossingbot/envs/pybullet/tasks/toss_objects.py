@@ -365,8 +365,8 @@ class TossObjects(BaseScene):
             yaw = random.uniform(-math.pi, math.pi)
             # # During test, fix the object's position
             # # NOTE: should be removed after testing
-            # x = self.scene_config['workspace_position'][0]
-            # y = self.scene_config['workspace_position'][1]
+            x = self.scene_config['workspace_position'][0]
+            y = self.scene_config['workspace_position'][1]
 
             if self.objects_config['object_types'][object_type] == 'ball':
                 object_id = create_sphere(position=[x, y, 0.02 + thickness], radius=0.02, mass=0.1)
@@ -375,7 +375,7 @@ class TossObjects(BaseScene):
             elif self.objects_config['object_types'][object_type] == 'rod':
                 object_id = create_cylinder(position=[x, y, 0.015 + thickness], orientation=[0.0, np.pi / 2, 0.0], radius=0.015, height=0.16, mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'hammer':
-                object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[0.0, np.pi / 2, 0.0], 
+                object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
                                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
                                           color=random_color())
             

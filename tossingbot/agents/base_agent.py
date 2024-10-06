@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn as nn
 
 class BaseAgent(nn.Module):
@@ -10,6 +11,7 @@ class BaseAgent(nn.Module):
             throwing_module: nn.Module = None, 
             epsilons: list[float] = [0.5, 0.1],
             total_episodes: int = 10000,
+            decay_factor: float = 0.2  # Decay factor for tau, set as a multiple of total_episodes
         ):
         """
         Initialize the BaseAgent for TossingBot.
@@ -24,6 +26,7 @@ class BaseAgent(nn.Module):
             throwing_module (nn.Module): Neural network module for predicting throwing parameters.
             epsilons (list[float]): Epsilon used for epsilon-greedy.
             total_episodes (int): Total training episodes.
+            decay_factor (float): Factor that determines the decay rate of epsilon, as a multiple of total_episodes.
         """
         super(BaseAgent, self).__init__()
         
@@ -39,23 +42,24 @@ class BaseAgent(nn.Module):
         self.epsilon_start = epsilons[0]
         self.epsilon_end = epsilons[1]
         self.total_episodes = total_episodes
+        self.tau = decay_factor * total_episodes  # Set tau as a multiple of total_episodes
 
         # Initialize the current epsilon to the start value
         self.current_epsilon = self.epsilon_start
 
     def update_epsilon(self, episode_num):
         """
-        Update the epsilon value based on the current episode number.
-        The epsilon value decays linearly from epsilon_start to epsilon_end over total_episodes.
+        Update the epsilon value using exponential decay based on the current episode number.
+        The epsilon value decays smoothly from epsilon_start to epsilon_end over total_episodes.
         
         Args:
             episode_num (int): The current episode number.
         """
-        fraction = min(float(episode_num) / self.total_episodes, 1.0)
-        self.current_epsilon = self.epsilon_start + fraction * (self.epsilon_end - self.epsilon_start)
+        # Exponential decay formula
+        self.current_epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * np.exp(-episode_num / self.tau)
 
-    def forward(self, I):
+    def forward(self):
         raise NotImplementedError
     
-    def predict(self, observation, n_rotations=16):
+    def predict(self):
         raise NotImplementedError

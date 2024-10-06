@@ -8,7 +8,6 @@ from tqdm import tqdm
 from collections import deque
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
-from tossingbot.envs.pybullet.utils.camera_utils import plot_heightmaps
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.utils.pytorch_utils import initialize_weights, load_model, save_model
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule, ReplayBuffer
@@ -26,13 +25,11 @@ if __name__ == '__main__':
     
     # Parameters
     use_gui = True
+    box_length = 0.15
     box_n_rows, box_n_cols = 1, 1
-    n_object = 1
 
-    # r_h = 0.5
-    # post_grasp_h = 0.3
     n_rotations = 1
-    phi_deg = 0
+    phi_deg = 45
 
     total_episodes = 10_000
 
@@ -46,9 +43,7 @@ if __name__ == '__main__':
         scene_config={
             'box_n_rows': box_n_rows,
             'box_n_cols': box_n_cols,
-        },
-        objects_config={
-            'n_object': n_object,
+            'box_length': box_length,
         },
         camera_config={'n_rotations': n_rotations}
     )
@@ -60,7 +55,7 @@ if __name__ == '__main__':
 
     # Replay buffer
     replay_buffer = ReplayBuffer(capacity=10000)
-    batch_size = 32  # Set batch size
+    batch_size = 1  # Set batch size
 
     # Initialize weights with Xavier
     initialize_weights(perception_module)
@@ -75,7 +70,6 @@ if __name__ == '__main__':
         grasping_module=grasping_module, 
         throwing_module=throwing_module,
         physics_controller=physics_controller,
-        # post_grasp_h=post_grasp_h,
     )
 
     # Optimizer
@@ -92,7 +86,13 @@ if __name__ == '__main__':
     obs, info = env.reset()
     progress_bar = tqdm(range(start_episode, total_episodes), desc="Training Progress")
     for episode_num in progress_bar:
-        action, intermediates = agent.predict([obs], n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num)
+        action, intermediates = agent.predict(
+            [obs], 
+            n_rotations=n_rotations, 
+            phi_deg=phi_deg, 
+            episode_num=episode_num, 
+            use_heuristic=info['next_grasp_with_heuristic']
+        )
         next_obs, reward, terminated, truncated, info = env.step(action=action[0])
 
         # Store (obs, action, reward) in the replay buffer
@@ -116,7 +116,7 @@ if __name__ == '__main__':
         })
 
         # If enough samples are available in the replay buffer, sample a batch
-        if len(replay_buffer) > batch_size:
+        if len(replay_buffer) >= batch_size:
             batch = replay_buffer.sample(batch_size)
             
             batch_loss = torch.tensor(0.0, device=device)

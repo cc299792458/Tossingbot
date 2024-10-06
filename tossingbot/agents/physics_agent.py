@@ -78,8 +78,6 @@ class PhysicsAgent(BaseAgent):
             grasping_module: nn.Module = None, 
             throwing_module: nn.Module = None, 
             physics_controller: PhysicsController = None,
-            # post_grasp_h: float = 0.3,
-            # post_grasp_z: float = 0.4,
             epsilons: list[float] = [0.5, 0.1],
             total_episodes: int = 10000,  # Add total episodes for scheduling
         ):
@@ -94,14 +92,10 @@ class PhysicsAgent(BaseAgent):
             grasping_module (nn.Module): Neural network module for predicting grasping parameters.
             throwing_module (nn.Module): Neural network module for predicting throwing parameters.
             physics_controller (PhysicsController): Module to calculate throwing parameters based on physics.
-            post_grasp_h (float): Horizontal distance from the robot to the post-grasp pose.
-            post_grasp_z (float): Height for the post-grasp pose.
             epsilons (list[float]): Epsilon values for exploration.
         """
         super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons, total_episodes)
         self.physics_controller = physics_controller
-        # self.post_grasp_h = post_grasp_h
-        # self.post_grasp_z = post_grasp_z
 
     def forward(self, I, v):
         """
