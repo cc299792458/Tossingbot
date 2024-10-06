@@ -1,3 +1,9 @@
+"""
+    In this experiment, we test the PhysicsAgent to optimize the grasping of an object. 
+    Since the throwing velocity is directly provided by the PhysicsController, 
+    the throwing loss is not calculated and does not participate in the training process.
+"""
+
 import os
 import torch
 import numpy as np

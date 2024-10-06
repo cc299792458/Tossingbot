@@ -351,8 +351,7 @@ class TossObjects(BaseScene):
         thickness = 0.001
 
         for i in range(self.objects_config['n_object']):
-            object_type = 0
-            # object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
+            object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
             x = random.uniform(
                 self.scene_config['workspace_position'][0] - self.scene_config['workspace_length'] / 2 + margin,
                 self.scene_config['workspace_position'][0] + self.scene_config['workspace_length'] / 2 - margin,
@@ -362,10 +361,10 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
             yaw = random.uniform(-math.pi, math.pi)
-            # # During test, fix the object's position
-            # # NOTE: should be removed after testing
-            x = self.scene_config['workspace_position'][0]
-            y = self.scene_config['workspace_position'][1]
+            # During test, fix the object's position
+            # NOTE: should be removed after testing
+            # x = self.scene_config['workspace_position'][0]
+            # y = self.scene_config['workspace_position'][1]
 
             if self.objects_config['object_types'][object_type] == 'ball':
                 object_id = create_sphere(position=[x, y, 0.02 + thickness], radius=0.02, mass=0.1)
@@ -377,6 +376,8 @@ class TossObjects(BaseScene):
                 object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
                                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
                                           color=random_color())
+            else:
+                raise NotImplementedError
             
             # p.changeDynamics(object_id, -1, lateralFriction=2.0, rollingFriction=0.01)
 

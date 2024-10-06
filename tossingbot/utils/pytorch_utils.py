@@ -25,12 +25,12 @@ def initialize_weights(model):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-def save_model(agent, optimizer, episode, log_dir):
+def save_model(agent, optimizer, episode, log_dir, model_name='agent_checkpoint'):
     # Ensure the log directory exists
     os.makedirs(log_dir, exist_ok=True)
 
     # Save the model
-    model_path = os.path.join(log_dir, 'agent_checkpoint.pth')
+    model_path = os.path.join(log_dir, model_name + '.pth')
     torch.save({
         'episode': episode,
         'model_state_dict': agent.state_dict(),
@@ -38,13 +38,17 @@ def save_model(agent, optimizer, episode, log_dir):
     }, model_path)
     print(f"Model saved at {model_path}")
 
-def load_model(agent, optimizer, log_dir):
+def load_model(agent, optimizer, log_dir, model_name='agent_checkpoint'):
     # Load the model if exists
-    model_path = os.path.join(log_dir, 'agent_checkpoint.pth')
+    model_path = os.path.join(log_dir, model_name + '.pth')
     if os.path.isfile(model_path):
         checkpoint = torch.load(model_path)
         agent.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        # Only load optimizer if it's not None
+        if optimizer is not None:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
         episode = checkpoint['episode']
         print(f"Model loaded from {model_path}, resuming from episode {episode}")
         return episode
