@@ -608,34 +608,6 @@ class TossObjects(BaseScene):
             
             return residual_velocity
 
-    # def grasp_heuristic(self):
-    #     """
-    #     Grasp heuristic to help accelerate training.
-    #     """
-    #     chosen_object_id = None
-    #     min_distance = np.inf
-    #     workspace_position = self.scene_config['workspace_position']
-    #     workspace_x, workspace_y = workspace_position[0], workspace_position[1]
-
-    #     for object_id in self.object_ids:
-    #         object_pose = self.get_object_pose(object_id)
-    #         object_position = object_pose[0]
-
-    #         # Calculate the distance from the object to the center of the workspace
-    #         object_to_workspace_distance = np.linalg.norm([
-    #             object_position[0] - workspace_x, 
-    #             object_position[1] - workspace_y
-    #         ])
-
-    #         # Update the chosen object if this one is closer
-    #         if object_to_workspace_distance < min_distance:
-    #             chosen_object_id = object_id
-    #             min_distance = object_to_workspace_distance
-
-    #     object_pose = self.get_object_pose(chosen_object_id)
-
-    #     return object_pose
-
     def compute_throw_velocity(self, landing_position, g=9.81):
         """
         Compute the throw velocity based on the landing position of the object.
@@ -689,11 +661,13 @@ class TossObjects(BaseScene):
     
     def get_info(self):
         return {
+            "objects_id": self.object_ids,
+            "object_poses": [p.getBasePositionAndOrientation(object_id) for object_id in self.object_ids],
             "grasp_success": self.grasp_success,
-            "object_id": self.grasped_object_id,
+            "grasped_object_id": self.grasped_object_id,
             "throw_success": self.throw_success,
             "next_grasp_with_heuristic": (
-            self.task_config['use_heuristic'] and 
+            self.task_config['use_heuristic'] and
             self.consecutive_grasp_failures >= self.task_config['consecutive_grasp_failures_threshold']
             )
         }

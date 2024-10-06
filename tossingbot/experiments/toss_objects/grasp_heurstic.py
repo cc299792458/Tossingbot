@@ -1,16 +1,94 @@
-"""
-    In this experiment, we test the effectiveness of the grasp heuristic.
-"""
-
 import os
 import numpy as np
 import torch
-
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
+
+
+def plot_grasp_success(object_poses, grasp_success_history, margin=0.05):
+    """
+    Visualize the grasp successes and failures.
+    An 'O' is placed where the object was successfully grasped, and an 'X' where it failed.
+    
+    Args:
+        object_poses (list): A list of object positions where grasps were attempted.
+        grasp_success_history (list): A list of booleans indicating if the grasp was successful or not.
+        margin (float): A margin to add around the object positions for better visualization (default: 0.05).
+    """
+    fig, ax = plt.subplots()
+
+    # Extract all x and y positions
+    x_positions = [pose[0][0] for pose in object_poses]
+    y_positions = [pose[0][1] for pose in object_poses]
+
+    # Get the min and max values with a margin
+    x_min, x_max = min(x_positions) - margin, max(x_positions) + margin
+    y_min, y_max = min(y_positions) - margin, max(y_positions) + margin
+
+    for i, pose in enumerate(object_poses):
+        x, y = pose[0][0], pose[0][1]
+        marker = 'O' if grasp_success_history[i] else 'X'
+        color = 'black' if grasp_success_history[i] else 'red'
+        ax.text(x, y, marker, color=color, ha='center', va='center', fontsize=12)
+
+    ax.set_xlabel('X Position')
+    ax.set_ylabel('Y Position')
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    # Set aspect ratio to be equal for correct scaling
+    ax.set_aspect('equal')
+    ax.set_title('Grasp Success (O: Success, X: Failure)')
+    plt.show()
+
+def plot_throw_success(throw_success_history, target_positions):
+    """
+    Visualize the throw success rates at each target position.
+    
+    Args:
+        throw_success_history (list): A list of booleans indicating if the throw was successful or not.
+        target_positions (list): The target positions (x, y, z) for the throws.
+    """
+    # Step 1: Convert target positions to a set of unique positions
+    target_positions_set = set(map(tuple, target_positions))  # Convert each position to a tuple
+
+    # Step 2: Initialize a dictionary to track total throws and successful throws per target position
+    target_stats = {pos: {'success': 0, 'total': 0} for pos in target_positions_set}
+
+    # Step 3: Iterate over the throw success history and target positions, update the stats
+    for i, target_pos in enumerate(target_positions):
+        target_pos_tuple = tuple(target_pos)  # Convert current position to tuple for dictionary key
+        target_stats[target_pos_tuple]['total'] += 1  # Update total attempts
+        if throw_success_history[i]:  # If the throw was successful
+            target_stats[target_pos_tuple]['success'] += 1  # Update successful throws
+
+    # Step 4: Calculate success rates for each target position
+    success_rates = {pos: target_stats[pos]['success'] / target_stats[pos]['total'] 
+                     if target_stats[pos]['total'] > 0 else 0 for pos in target_stats}
+
+    # Step 5: Plot the success rates
+    fig, ax = plt.subplots()
+
+    # Extract positions and success rates for plotting
+    x_vals = [pos[0] for pos in success_rates.keys()]  # Extract X coordinates
+    y_vals = [pos[1] for pos in success_rates.keys()]  # Extract Y coordinates
+    success_vals = [rate for rate in success_rates.values()]  # Extract success rates
+
+    # Create a scatter plot where size of the marker is proportional to the success rate
+    scatter = ax.scatter(x_vals, y_vals, c=success_vals, cmap='Blues', s=[rate * 500 for rate in success_vals], alpha=0.7)
+
+    # Add a color bar to indicate success rate scale
+    plt.colorbar(scatter, label='Success Rate')
+
+    ax.set_title('Throw Success Rates at Target Positions')
+    ax.set_xlabel('X Position')
+    ax.set_ylabel('Y Position')
+    plt.show()
+
+    return success_rates  # Return the success rates for further analysis if needed
 
 if __name__ == '__main__':
     set_seed()
@@ -24,9 +102,11 @@ if __name__ == '__main__':
     phi_deg = 45  # Set phi_deg to 45 degrees
     total_episodes = 100  # Reduced to a smaller number of episodes for heuristic testing
 
-    # Create list to track the history of grasp successes and throw successes
+    # Create list to track the history of grasp successes, throw successes, and object poses
     grasp_success_history = []
     throw_success_history = []
+    object_poses_history = []  # To track where grasps are attempted
+    target_positions = []  # To track target throw positions
 
     # Env
     env = TossObjects(
@@ -57,12 +137,14 @@ if __name__ == '__main__':
         action, intermediates = agent.predict([obs], n_rotations=n_rotations, phi_deg=phi_deg, episode_num=episode_num, use_heuristic=True)
         next_obs, reward, terminated, truncated, info = env.step(action=action[0])
 
-        # Update current observation
-        obs = next_obs
-
-        # Record grasp success and throw success for this episode
+        # Record grasp success, throw success, and object position for this episode
         grasp_success_history.append(info['grasp_success'])
         throw_success_history.append(info['throw_success'])
+        object_poses_history.append(info['object_poses'][0])  # Get object position after the grasp
+        target_positions.append(obs[1])  # Target throw position
+
+        # Update current observation
+        obs = next_obs
 
         # Compute average success rate over the completed episodes
         avg_grasp_success = np.mean(grasp_success_history)
@@ -73,3 +155,7 @@ if __name__ == '__main__':
             "Grasp Success Rate": f"{avg_grasp_success:.3f}",
             "Throw Success Rate": f"{avg_throw_success:.3f}",
         })
+
+    # After the loop, plot the grasp and throw success visualizations
+    plot_grasp_success(object_poses_history, grasp_success_history)
+    throw_success_rates = plot_throw_success(throw_success_history, target_positions)
