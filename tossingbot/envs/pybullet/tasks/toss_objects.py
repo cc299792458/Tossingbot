@@ -234,7 +234,7 @@ class TossObjects(BaseScene):
             width (float): Width of the workspace.
             position (list): Center position [x, y] of the workspace.
         """
-        thickness = 0.01
+        thickness = 0.001
         color = [0.8, 0.8, 0.8, 1.0]
         self.workspace_ids = []
         
@@ -349,6 +349,7 @@ class TossObjects(BaseScene):
                 p.removeBody(object_id)
 
         self.object_ids = []
+        thickness = 0.001
 
         for i in range(self.objects_config['n_object']):
             object_type = 0
@@ -368,13 +369,13 @@ class TossObjects(BaseScene):
             # y = self.scene_config['workspace_position'][1]
 
             if self.objects_config['object_types'][object_type] == 'ball':
-                object_id = create_sphere(position=[x, y, 0.02], radius=0.02, mass=0.1)
+                object_id = create_sphere(position=[x, y, 0.02 + thickness], radius=0.02, mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'cube':
-                object_id = create_box(position=[x, y, 0.02], half_extents=[0.02, 0.02, 0.02], mass=0.1)
+                object_id = create_box(position=[x, y, 0.02 + thickness], half_extents=[0.02, 0.02, 0.02], mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'rod':
-                object_id = create_cylinder(position=[x, y, 0.015], orientation=[0.0, np.pi / 2, 0.0], radius=0.015, height=0.16, mass=0.1)
+                object_id = create_cylinder(position=[x, y, 0.015 + thickness], orientation=[0.0, np.pi / 2, 0.0], radius=0.015, height=0.16, mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'hammer':
-                object_id = create_hammer(position=[x, y, 0.02], orientation=[0.0, np.pi / 2, 0.0], 
+                object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[0.0, np.pi / 2, 0.0], 
                                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
                                           color=random_color())
             
@@ -417,7 +418,8 @@ class TossObjects(BaseScene):
 
         # Retrieve the depth value from the visual observation
         # grasp_z = self.visual_observation['depth_heightmap'][pixel_y, pixel_x]
-        grasp_z = 0.02
+        thickness = 0.001
+        grasp_z = 0.02 + thickness
 
         # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
         self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation

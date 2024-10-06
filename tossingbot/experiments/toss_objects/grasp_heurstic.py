@@ -1,3 +1,7 @@
+"""
+    In this experiment, we show the effectiveness of the grasp heuristic.
+"""
+
 import os
 import numpy as np
 import torch
@@ -8,6 +12,8 @@ from tossingbot.envs.pybullet.tasks import TossObjects
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
+# NOTE: When we set box_length to 0.25, the throwing success rate is lower than 1.0. 
+# The primary reason is that the throwing primitive becomes less stable over longer distances.
 
 def plot_grasp_success(object_poses, grasp_success_history, margin=0.05):
     """
@@ -103,7 +109,7 @@ if __name__ == '__main__':
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs") 
     
     # Parameters
-    use_gui = False
+    use_gui = True
     n_rotations = 1
     phi_deg = 45  # Set phi_deg to 45 degrees
     total_episodes = 100  # Reduced to a smaller number of episodes for heuristic testing
@@ -117,6 +123,7 @@ if __name__ == '__main__':
     # Env
     env = TossObjects(
         use_gui=use_gui,
+        scene_config={'box_length': 0.15},
         camera_config={'n_rotations': n_rotations}
     )
 

@@ -4,6 +4,8 @@
     The robot first grasps the sphere, then throws it to the target, and success is measured by the final position.
 """
 
+# NOTE: Please also refer to "/Tossingbot/tossingbot/experiments/toss_objects/grasp_heurstic.py"
+
 import os
 import time
 import numpy as np
