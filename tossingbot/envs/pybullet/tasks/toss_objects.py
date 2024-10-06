@@ -362,10 +362,6 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
             yaw = random.uniform(-math.pi, math.pi)
-            # During test, fix the object's position
-            # NOTE: should be removed after testing
-            # x = self.scene_config['workspace_position'][0]
-            # y = self.scene_config['workspace_position'][1]
 
             if self.objects_config['object_types'][object_type] == 'ball':
                 object_id = create_sphere(position=[x, y, 0.02 + thickness], radius=0.02, mass=0.1)
@@ -392,13 +388,14 @@ class TossObjects(BaseScene):
 
     def reset_task(self, init=False):
         self.select_target_box()
-
+        
         self.post_throw_settle_count = 0
 
         if init:
             self.grasp_success = False
             self.throw_success = False
             self.grasped_object_id = None
+            self.landing_box = (-1, -1)
 
             if self.task_config['use_heuristic']:
                 self.consecutive_grasp_failures = 0
@@ -582,8 +579,7 @@ class TossObjects(BaseScene):
         return self.get_label()
     
     def get_label(self):
-        # TODO: labelling throwing
-        if self.grasp_success:  # NOTE: use self.throw_success as condition to supervise grasping with throwing performance
+        if self.grasp_success:  # NOTE: can be change to self.throw_success, as condition to supervise grasping with throwing performance
             grasp_label = 0
         else:
             grasp_label = 1
@@ -598,18 +594,15 @@ class TossObjects(BaseScene):
         """
         residual_velocity = None
 
-        if self.grasp_success:
-            for row in range(self.scene_config['box_n_rows']):
-                for col in range(self.scene_config['box_n_cols']):
-                    if self.is_object_in_box(self.grasped_object_id, row, col):
-                        box_x, box_y = self.get_box_position(row=row, col=col)
-                        actual_throw_velocity = self.compute_throw_velocity((box_x, box_y, self.scene_config['box_height']))
-                        actual_velocity_magnitude = np.linalg.norm(actual_throw_velocity[0][0], actual_throw_velocity[0][1], actual_throw_velocity[0][2])
-                        velocity_magnitude = np.linalg.norm(self.throw_velocity[0][0], self.throw_velocity[0][1], self.throw_velocity[0][2])
+        if self.landing_box != (-1, -1):
+            box_x, box_y = self.get_box_position(row=self.landing_box[0], col=self.landing_box[1])
+            actual_throw_velocity = self.compute_throw_velocity((box_x, box_y, self.scene_config['box_height']))
+            actual_velocity_magnitude = np.linalg.norm(actual_throw_velocity[0])
+            velocity_magnitude = np.linalg.norm(self.throw_velocity[0])
 
-                        residual_velocity = velocity_magnitude - actual_velocity_magnitude
+            residual_velocity = velocity_magnitude - actual_velocity_magnitude
             
-            return residual_velocity
+        return residual_velocity
 
     def compute_throw_velocity(self, landing_position, g=9.81):
         """
@@ -697,6 +690,16 @@ class TossObjects(BaseScene):
 
     def check_throw_success(self):
         self.throw_success = self.is_object_in_target_box(object_id=self.grasped_object_id)
+
+        if self.grasp_success:
+            for row in range(self.scene_config['box_n_rows']):
+                for col in range(self.scene_config['box_n_cols']):
+                    if self.is_object_in_box(self.grasped_object_id, row, col):
+                        self.landing_box = (row, col)
+                        
+                        return
+            
+        self.landing_box = (-1, -1)
 
     def get_object_pose(self, object_id):
         if object_id in self.object_ids:

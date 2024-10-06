@@ -55,6 +55,9 @@ if __name__ == '__main__':
     # Set device (use GPU if available, otherwise CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # If load model or not
+    load_model_ = False
+
     # Parameters
     use_gui = False
     box_length = 0.15
@@ -117,8 +120,10 @@ if __name__ == '__main__':
     grasp_criterion = nn.CrossEntropyLoss()
 
     # Optionally load the model
-    start_episode = 0
-    # start_episode = load_model(agent, optimizer, log_dir, 'phyiscs_agent')
+    if not load_model_:
+        start_episode = 0
+    else:
+        start_episode = load_model(agent, optimizer, log_dir, 'phyiscs_agent')
 
     # Main loop
     obs, info = env.reset()

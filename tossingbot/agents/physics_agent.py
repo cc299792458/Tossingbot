@@ -79,7 +79,8 @@ class PhysicsAgent(BaseAgent):
             throwing_module: nn.Module = None, 
             physics_controller: PhysicsController = None,
             epsilons: list[float] = [0.5, 0.1],
-            total_episodes: int = 10000,  # Add total episodes for scheduling
+            total_episodes: int = 10000,
+            decay_factor: float = 0.2,
         ):
         """
         Initialize the PhysicsAgent for TossingBot, inheriting from BaseAgent.
@@ -93,8 +94,10 @@ class PhysicsAgent(BaseAgent):
             throwing_module (nn.Module): Neural network module for predicting throwing parameters.
             physics_controller (PhysicsController): Module to calculate throwing parameters based on physics.
             epsilons (list[float]): Epsilon values for exploration.
+            total_episodes (int): Total training episodes.
+            decay_factor (float): Factor that determines the decay rate of epsilon, as a multiple of total_episodes.
         """
-        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons, total_episodes)
+        super(PhysicsAgent, self).__init__(device, perception_module, grasping_module, throwing_module, epsilons, total_episodes, decay_factor)
         self.physics_controller = physics_controller
 
     def forward(self, I, v):

@@ -1,5 +1,5 @@
 """
-    In this experiment, we test the PhysicsAgent by evaluating its grasping and throwing capabilities across multiple episodes.
+    In this experiment, we test the ResidualPhysicsAgent by evaluating its grasping and throwing capabilities across multiple episodes.
 """
 
 import os
@@ -10,7 +10,8 @@ from tqdm import tqdm
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.utils.pytorch_utils import load_model
 from tossingbot.envs.pybullet.tasks import TossObjects
-from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
+from tossingbot.agents.physics_agent import PhysicsController
+from tossingbot.agents.residual_physics_agent import ResidualPhysicsAgent
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 if __name__ == '__main__':
@@ -55,7 +56,7 @@ if __name__ == '__main__':
 
     # Agent
     physics_controller = PhysicsController()
-    agent = PhysicsAgent(
+    agent = ResidualPhysicsAgent(
         device=device, 
         perception_module=perception_module, 
         grasping_module=grasping_module, 
@@ -65,7 +66,7 @@ if __name__ == '__main__':
     )
 
     # Load the model
-    load_model(agent, None, log_dir, model_name='physics_agent')
+    load_model(agent, None, log_dir, model_name='residual_physics_agent')
 
     # Main loop for testing
     obs, info = env.reset()
@@ -96,5 +97,5 @@ if __name__ == '__main__':
     avg_throw_success = np.mean(throw_success_history) if throw_success_history else 0.0
 
     # Print final results
-    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 1.000
-    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 1.000
+    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 0.990
+    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 0.869

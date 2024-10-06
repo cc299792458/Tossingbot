@@ -1,7 +1,5 @@
 """
-    In this experiment, we test the PhysicsAgent to optimize the grasping of an object. 
-    Since the throwing velocity is directly provided by the PhysicsController, 
-    the throwing loss is not calculated and does not participate in the training process.
+    In this experiment, we train the ResidualPhysicsAgent to optimize the grasping and throwing of an object. 
 """
 
 import os
@@ -15,44 +13,33 @@ from tqdm import tqdm
 from collections import deque
 from tossingbot.utils.misc_utils import set_seed
 from tossingbot.envs.pybullet.tasks import TossObjects
-from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
+from tossingbot.agents.physics_agent import PhysicsController
+from tossingbot.agents.residual_physics_agent import ResidualPhysicsAgent
 from tossingbot.utils.pytorch_utils import initialize_weights, load_model, save_model
 from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule, ReplayBuffer
 
 torch.autograd.set_detect_anomaly(True)
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-def plot_success_rates(grasp_success_history, throw_success_history, total_episodes):
+def plot_success_rates(avg_grasp_success_history, avg_throw_success_history):
     """
-    Plot the grasp success and throw success rates over episodes.
+    Plot the grasp and throw success rates over episodes.
 
     Args:
-        grasp_success_history (deque or list): History of grasp success (1 for success, 0 for failure).
-        throw_success_history (deque or list): History of throw success (1 for success, 0 for failure).
-        total_episodes (int): Total number of episodes.
+        avg_grasp_success_history (list): History of average grasp success rate over time.
+        avg_throw_success_history (list): History of average throw success rate over time.
     """
-    # Convert deque to list for slicing
-    grasp_success_history = list(grasp_success_history)
-    throw_success_history = list(throw_success_history)
-
     # Episodes range
-    episodes = range(len(grasp_success_history))
-
-    # Moving average over the last 1000 episodes for grasp and throw success
-    avg_grasp_success = [np.mean(grasp_success_history[max(0, i-1000):i+1]) for i in episodes]
-    avg_throw_success = [np.mean(throw_success_history[max(0, i-1000):i+1]) for i in episodes]
+    episodes = range(len(avg_grasp_success_history))
 
     # Plotting
     plt.figure(figsize=(10, 5))
 
-    plt.plot(episodes, avg_grasp_success, label='Grasp Success Rate (Last 1000)', color='blue')
-    plt.plot(episodes, avg_throw_success, label='Throw Success Rate (Last 1000)', color='green')
+    plt.plot(episodes, avg_grasp_success_history, label='Average Grasp Success Rate', color='blue')
+    plt.plot(episodes, avg_throw_success_history, label='Average Throw Success Rate', color='green')
 
     plt.xlabel('Episodes')
     plt.ylabel('Success Rate')
-    plt.title('Grasp and Throw Success Rates Over Episodes')
+    plt.title('Grasp and Throw Success Rates Over Time')
     plt.legend(loc='best')
 
     plt.grid(True)
@@ -67,6 +54,9 @@ if __name__ == '__main__':
     # Set device (use GPU if available, otherwise CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # If load model or not
+    load_model_ = False
+
     # Parameters
     use_gui = False
     box_length = 0.15
@@ -75,11 +65,15 @@ if __name__ == '__main__':
     n_rotations = 1
     phi_deg = 45
 
-    total_episodes = 100
+    total_episodes = 300
 
-    # Create deque to track the history of grasp and throw successes
-    grasp_success_history = deque(maxlen=100)
-    throw_success_history = deque(maxlen=100)
+    # Lists to track the cumulative success rates over all episodes
+    avg_grasp_success_history = []
+    avg_throw_success_history = []
+
+    # Create deque to track the recent history of grasp and throw successes (for short-term stats)
+    grasp_success_history = deque(maxlen=10)
+    throw_success_history = deque(maxlen=10)
 
     # Env
     env = TossObjects(
@@ -89,6 +83,7 @@ if __name__ == '__main__':
             'box_n_cols': box_n_cols,
             'box_length': box_length,
         },
+        objects_config={"object_types": ['ball', 'cube']},
         camera_config={'n_rotations': n_rotations}
     )
 
@@ -99,7 +94,7 @@ if __name__ == '__main__':
 
     # Replay buffer
     replay_buffer = ReplayBuffer(capacity=10000)
-    batch_size = 1  # Set batch size
+    batch_size = 32  # Set batch size
 
     # Initialize weights with Xavier
     initialize_weights(perception_module)
@@ -108,13 +103,13 @@ if __name__ == '__main__':
 
     # Agent
     physics_controller = PhysicsController()
-    agent = PhysicsAgent(
+    agent = ResidualPhysicsAgent(
         device=device, 
         perception_module=perception_module, 
         grasping_module=grasping_module, 
         throwing_module=throwing_module,
         physics_controller=physics_controller,
-        epsilons=[0.0, 0.0] # disable epsilon-greedy
+        epsilons=[0.0, 0.0] # Disable epsilon-greedy for this test
     )
 
     # Optimizer
@@ -125,13 +120,15 @@ if __name__ == '__main__':
     throw_criterion = nn.SmoothL1Loss()  # Huber loss
 
     # Optionally load the model
-    start_episode = load_model(agent, optimizer, log_dir)
+    if not load_model_:
+        start_episode = 0
+    else:
+        start_episode = load_model(agent, optimizer, log_dir, 'residual_phyiscs_agent')
 
     # Main loop
     obs, info = env.reset()
     progress_bar = tqdm(range(start_episode, total_episodes), desc="Training Progress")
-    avg_grasp_success = 0.0
-    avg_throw_success = 0.0
+
     for episode_num in progress_bar:
         action, intermediates = agent.predict(
             [obs], 
@@ -148,20 +145,24 @@ if __name__ == '__main__':
         # Update current obs
         obs = next_obs
 
-        # Record grasp success and throw success for this episode
+        # Record grasp success and throw success for this episode (for both recent and full history)
         grasp_success_history.append(info['grasp_success'])
+
         if info['grasp_success']:
             throw_success_history.append(info['throw_success'])
 
-        # Compute average success rates over the last 100 episodes (or fewer if not enough episodes)
+        # Calculate short-term average success rates based on the recent history
         avg_grasp_success = np.mean(grasp_success_history)
-        if info['grasp_success']:
-            avg_throw_success = np.mean(throw_success_history)
+        avg_throw_success = np.mean(throw_success_history) if throw_success_history else 0.0
 
-        # Update the tqdm description to display the success rates
+        # Append the cumulative success rates to the history for plotting
+        avg_grasp_success_history.append(avg_grasp_success)
+        avg_throw_success_history.append(avg_throw_success)
+
+        # Update the tqdm description to display the short-term success rates
         progress_bar.set_postfix({
-            "Grasp Success Rate": f"{avg_grasp_success:.3f}",
-            "Throw Success Rate": f"{avg_throw_success:.3f}"
+            "Grasp Success": f"{avg_grasp_success:.3f}",
+            "Throw Success": f"{avg_throw_success:.3f}"
         })
 
         # If enough samples are available in the replay buffer, sample a batch
@@ -201,8 +202,8 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-    # # Save model after training
-    # save_model(agent, optimizer, episode_num, log_dir)
+    # Plot cumulative success rates after training
+    plot_success_rates(avg_grasp_success_history, avg_throw_success_history)
 
-    # Plot success rates after training
-    plot_success_rates(grasp_success_history, throw_success_history, total_episodes)
+    # Save model after training
+    save_model(agent, optimizer, episode_num, log_dir, model_name='residual_physics_agent')

@@ -21,4 +21,16 @@ if __name__ == '__main__':
         print(f"Predicted velocity magnitude when phi is {phi_deg} degrees: {v_magnitude}")
 
         # Visualize the trajectory for this angle
-        plot_trajectory(throw_pos=(r_x, r_y, r_z), throw_vel=(v_x, v_y, v_z), target_pos=(p_x, p_y, p_z))
+        # plot_trajectory(throw_pos=(r_x, r_y, r_z), throw_vel=(v_x, v_y, v_z), target_pos=(p_x, p_y, p_z))
+
+    phi_deg = 45
+    p_xes, p_y, p_z = [0.85, 1.0, 1.15], 0.0, 0.2
+    
+    for p_x in p_xes:
+        # Predict the release point and velocity based on the target position and launch angle
+        (r_x, r_y, r_z), (v_x, v_y, v_z) = controller.predict(target_pos=(p_x, p_y, p_z), phi_deg=phi_deg)
+        v_magnitude = np.linalg.norm([v_x, v_y, v_z])
+        print(f"Predicted velocity magnitude when p_x is {p_x}: {v_magnitude}")
+
+        # Visualize the trajectory for this angle
+        # plot_trajectory(throw_pos=(r_x, r_y, r_z), throw_vel=(v_x, v_y, v_z), target_pos=(p_x, p_y, p_z))
