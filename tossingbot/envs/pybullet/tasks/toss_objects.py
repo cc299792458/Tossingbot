@@ -455,10 +455,10 @@ class TossObjects(BaseScene):
             is_action_finished = True
         
         are_objects_static = True
-        for object_id in self.object_ids:
-            # Set a big angular_threhold here to ignore the angular velocity
-            if not self.is_object_static(object_id=object_id, linear_threshold=0.05, angular_threshold=10.0):
-                are_objects_static = False
+        # for object_id in self.object_ids:
+        #     # Set a big angular_threhold here to ignore the angular velocity
+        #     if not self.is_object_static(object_id=object_id, linear_threshold=0.05, angular_threshold=10.0):
+        #         are_objects_static = False
 
         return is_action_finished and are_objects_static
 
@@ -806,10 +806,3 @@ class TossObjects(BaseScene):
             end_point = corners[(i + 1) % len(corners)]
             debug_line_id = p.addUserDebugLine(start_point, end_point, lineColorRGB=[1, 0, 0], lineWidth=3)
             self.target_visualization_ids.append(debug_line_id)
-
-if __name__ == '__main__':
-    set_seed()
-    env = TossObjects()
-    #####----- Main Loop -----#####
-    while True:
-        env.step(action=(None, None))

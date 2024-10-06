@@ -78,10 +78,16 @@ def plot_throw_success(throw_success_history, target_positions):
     success_vals = [rate for rate in success_rates.values()]  # Extract success rates
 
     # Create a scatter plot where size of the marker is proportional to the success rate
-    scatter = ax.scatter(x_vals, y_vals, c=success_vals, cmap='Blues', s=[rate * 500 for rate in success_vals], alpha=0.7)
+    scatter = ax.scatter(x_vals, y_vals, c=success_vals, cmap='Blues', s=[rate * 500 for rate in success_vals], alpha=0.7, vmin=0, vmax=1)
+    scatter.set_clim(0, 1)
 
-    # Add a color bar to indicate success rate scale
-    plt.colorbar(scatter, label='Success Rate')
+    # Add a color bar with correct limits from 0 to 1
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Success Rate')
+
+    # Annotate each point with its success rate
+    for i, rate in enumerate(success_vals):
+        ax.text(x_vals[i], y_vals[i], f'{rate:.2f}', ha='center', va='center', fontsize=9, color='black')
 
     ax.set_title('Throw Success Rates at Target Positions')
     ax.set_xlabel('X Position')
@@ -97,7 +103,7 @@ if __name__ == '__main__':
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs") 
     
     # Parameters
-    use_gui = True
+    use_gui = False
     n_rotations = 1
     phi_deg = 45  # Set phi_deg to 45 degrees
     total_episodes = 100  # Reduced to a smaller number of episodes for heuristic testing
