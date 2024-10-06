@@ -42,7 +42,7 @@ def load_model(agent, optimizer, log_dir, model_name='agent_checkpoint'):
     # Load the model if exists
     model_path = os.path.join(log_dir, model_name + '.pth')
     if os.path.isfile(model_path):
-        checkpoint = torch.load(model_path)
+        checkpoint = torch.load(model_path, weights_only=True)
         agent.load_state_dict(checkpoint['model_state_dict'])
         
         # Only load optimizer if it's not None

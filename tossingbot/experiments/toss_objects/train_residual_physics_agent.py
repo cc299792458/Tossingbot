@@ -20,13 +20,14 @@ from tossingbot.networks import PerceptionModule, GraspingModule, ThrowingModule
 
 torch.autograd.set_detect_anomaly(True)
 
-def plot_success_rates(avg_grasp_success_history, avg_throw_success_history):
+def plot_success_rates(avg_grasp_success_history, avg_throw_success_history, log_dir):
     """
     Plot the grasp and throw success rates over episodes.
 
     Args:
         avg_grasp_success_history (list): History of average grasp success rate over time.
         avg_throw_success_history (list): History of average throw success rate over time.
+        log_dir: Directory to save the plot
     """
     # Episodes range
     episodes = range(len(avg_grasp_success_history))
@@ -41,8 +42,11 @@ def plot_success_rates(avg_grasp_success_history, avg_throw_success_history):
     plt.ylabel('Success Rate')
     plt.title('Grasp and Throw Success Rates Over Time')
     plt.legend(loc='best')
-
     plt.grid(True)
+
+    plot_path = os.path.join(log_dir, 'residual_physics_agent_training_curve.png')
+    plt.savefig(plot_path)
+    
     plt.show()
 
 if __name__ == '__main__':
@@ -65,7 +69,7 @@ if __name__ == '__main__':
     n_rotations = 1
     phi_deg = 45
 
-    total_episodes = 300
+    total_episodes = 2_000
 
     # Lists to track the cumulative success rates over all episodes
     avg_grasp_success_history = []
@@ -203,7 +207,7 @@ if __name__ == '__main__':
             optimizer.step()
 
     # Plot cumulative success rates after training
-    plot_success_rates(avg_grasp_success_history, avg_throw_success_history)
+    plot_success_rates(avg_grasp_success_history, avg_throw_success_history, log_dir)
 
     # Save model after training
     save_model(agent, optimizer, episode_num, log_dir, model_name='residual_physics_agent')
