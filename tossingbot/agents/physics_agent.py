@@ -237,6 +237,56 @@ class PhysicsAgent(BaseAgent):
         grasp_affordances = F.softmax(q_g, dim=2).detach().cpu().numpy()[:, :, 0, :, :]
 
         return grasp_affordances, depth_heightmaps, q_g, q_t
+    
+    def _grasp_heuristic(self, depth_heightmaps):
+        """
+        Apply the grasp heuristic to a batch of depth heightmaps and return the best grasp pixel indices.
+
+        Args:
+            depth_heightmaps (np.array): A batch of depth heightmaps with shape (B, R, H, W).
+            
+        Returns:
+            best_pix_indices (np.array): The best grasp pixel indices for each image in the batch with shape (B, 3) (r, h, w).
+        """
+        B, R, H, W = depth_heightmaps.shape  # Batch size, Rotations, Height, Width
+        grasp_predictions_batch = []
+
+        # Iterate over the batch
+        for b in range(B):
+            grasp_predictions = []
+
+            # Iterate over the rotations (R)
+            for rotate_idx in range(R):
+                rotated_heightmap = depth_heightmaps[b, rotate_idx, :, :]
+
+                # Create valid areas for grasping
+                valid_areas = np.zeros(rotated_heightmap.shape)
+                valid_areas[np.logical_and(
+                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, -8], order=0) > 1.0,
+                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, 8], order=0) > 1.0
+                )] = 1
+
+                # Apply a blur filter to smooth the valid areas
+                blur_kernel = np.ones((8, 8), np.float32) / 9
+                valid_areas = cv2.filter2D(valid_areas, -1, blur_kernel)
+
+                # Rotate the valid areas back to the original orientation
+                valid_areas_rotated_back = ndimage.rotate(valid_areas, -(rotate_idx * (360.0 / R)), reshape=False, order=0)
+                
+                # Store valid areas for this rotation after undoing the rotation
+                grasp_predictions.append(valid_areas_rotated_back)
+
+            # Stack predictions along the rotation axis
+            grasp_predictions = np.stack(grasp_predictions, axis=0)
+            grasp_predictions_batch.append(grasp_predictions)
+
+        # Stack all batch predictions [B, R, H, W]
+        grasp_predictions_batch = np.stack(grasp_predictions_batch, axis=0)
+
+        # Find the best grasp pixel index for each sample in the batch
+        best_pix_indices = np.array([np.unravel_index(np.argmax(grasp_predictions), grasp_predictions.shape) for grasp_predictions in grasp_predictions_batch])
+
+        return best_pix_indices
 
     def _select_grasp_pixels(self, grasp_affordances):
         """Performs epsilon-greedy exploration to select grasp pixels."""
@@ -300,53 +350,6 @@ class PhysicsAgent(BaseAgent):
         q_i_logits = q_g[torch.arange(q_g.shape[0]), grasp_pixel_indices[:, 0], :, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
         delta_i = q_t[torch.arange(q_t.shape[0]), grasp_pixel_indices[:, 0], 0, grasp_pixel_indices[:, 1], grasp_pixel_indices[:, 2]]
         return q_i_logits, delta_i
-    
-    def _grasp_heuristic(self, depth_heightmaps):
-        """
-        Apply the grasp heuristic to a batch of depth heightmaps and return the best grasp pixel indices.
-
-        Args:
-            depth_heightmaps (np.array): A batch of depth heightmaps with shape (B, R, H, W).
-            
-        Returns:
-            best_pix_indices (np.array): The best grasp pixel indices for each image in the batch with shape (B, 3) (r, h, w).
-        """
-        B, R, H, W = depth_heightmaps.shape  # Batch size, Rotations, Height, Width
-        grasp_predictions_batch = []
-
-        # Iterate over the batch
-        for b in range(B):
-            grasp_predictions = []
-
-            # Iterate over the rotations (R)
-            for rotate_idx in range(R):
-                rotated_heightmap = depth_heightmaps[b, rotate_idx, :, :]
-
-                # Create valid areas for grasping
-                valid_areas = np.zeros(rotated_heightmap.shape)
-                valid_areas[np.logical_and(
-                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, -25], order=0) > 0.02,
-                    rotated_heightmap - ndimage.interpolation.shift(rotated_heightmap, [0, 25], order=0) > 0.02
-                )] = 1
-
-                # Apply a blur filter to smooth the valid areas
-                blur_kernel = np.ones((25, 25), np.float32) / 9
-                valid_areas = cv2.filter2D(valid_areas, -1, blur_kernel)
-
-                # No need to rotate back; store valid areas for this rotation
-                grasp_predictions.append(valid_areas)
-
-            # Stack predictions along the rotation axis
-            grasp_predictions = np.stack(grasp_predictions, axis=0)
-            grasp_predictions_batch.append(grasp_predictions)
-
-        # Stack all batch predictions [B, R, H, W]
-        grasp_predictions_batch = np.stack(grasp_predictions_batch, axis=0)
-
-        # Find the best grasp pixel index for each sample in the batch
-        best_pix_indices = np.array([np.unravel_index(np.argmax(grasp_predictions), grasp_predictions.shape) for grasp_predictions in grasp_predictions_batch])
-
-        return best_pix_indices
 
 ############### Visualization ###############
 def plot_trajectory(throw_pos, throw_vel, target_pos, g=9.81, time_steps=100):

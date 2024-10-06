@@ -7,20 +7,20 @@ import pybullet_data
 from scipy.spatial.transform import Rotation as R
 
 # Object Creation Functions
-def create_box(half_extents=[0.5, 0.5, 0.5], position=[0, 0, 1], orientation=[0, 0, 0], mass=0.1, color=[1, 0, 0, 1]):
+def create_sphere(radius=0.5, position=[0, 0, 1], mass=0.1, color=[1, 0, 0, 1]):
+    """Creates a sphere in the PyBullet simulation."""
+    collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=radius)
+    sphere_id = p.createMultiBody(mass, collision_shape, -1, position)
+    p.changeVisualShape(sphere_id, -1, rgbaColor=color)
+    return sphere_id
+
+def create_box(half_extents=[0.5, 0.5, 0.5], position=[0, 0, 1], orientation=[0, 0, 0], mass=0.1, color=[0, 1, 0, 1]):
     """Creates a box in the PyBullet simulation."""
     collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents)
     box_orientation = p.getQuaternionFromEuler(orientation)
     box_id = p.createMultiBody(mass, collision_shape, -1, position, box_orientation)
     p.changeVisualShape(box_id, -1, rgbaColor=color)
     return box_id
-
-def create_sphere(radius=0.5, position=[0, 0, 1], mass=0.1, color=[0, 1, 0, 1]):
-    """Creates a sphere in the PyBullet simulation."""
-    collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=radius)
-    sphere_id = p.createMultiBody(mass, collision_shape, -1, position)
-    p.changeVisualShape(sphere_id, -1, rgbaColor=color)
-    return sphere_id
 
 def create_cylinder(radius=0.3, height=1.0, position=[0, 0, 1], orientation=[0, 0, 0], mass=0.1, color=[0, 0, 1, 1]):
     """Creates a cylinder in the PyBullet simulation."""

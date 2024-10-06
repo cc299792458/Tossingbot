@@ -17,7 +17,7 @@ from tossingbot.envs.pybullet.utils.objects_utils import create_plane, create_sp
 from tossingbot.agents.physics_agent import PhysicsAgent, PhysicsController
 from tossingbot.networks.networks import PerceptionModule, GraspingModule, ThrowingModule
 
-def load_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=3, n_cols=3, position=[0.0, 0.0]):
+def load_boxes_with_dividers(length=0.25, width=0.15, height=0.1, n_rows=3, n_cols=3, position=[0.0, 0.0]):
     """
     Create a grid of hollow boxes separated by dividers using thin box walls.
     This function also returns the center positions of the boxes for use as target positions.
@@ -57,7 +57,16 @@ def load_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=3, n_co
 
     return box_ids, target_positions
 
-def run_throwing_experiment(robot, agent, target_positions, n_rows, n_cols, box_length=0.25, box_width=0.15, ball_radius=0.02, ball_mass=0.1):
+def run_throwing_experiment(
+        robot, 
+        agent, 
+        target_positions, 
+        n_rows, n_cols, 
+        box_length=0.25, 
+        box_width=0.15, 
+        box_height=0.1,
+        ball_radius=0.02, 
+        ball_mass=0.1):
     """
     Runs the throwing experiment where the robot first grasps a sphere and then throws it to different target positions.
     The PhysicsAgent calculates the post-grasp pose, throw pose, and throw velocity.
@@ -91,7 +100,7 @@ def run_throwing_experiment(robot, agent, target_positions, n_rows, n_cols, box_
         # Calculate the limits of the chosen box
         x_min, x_max = target_pos[0] - box_length / 2, target_pos[0] + box_length / 2
         y_min, y_max = target_pos[1] - box_width / 2, target_pos[1] + box_width / 2
-        z_max = 0.2  # Height of the box
+        z_max = box_height
 
         # Create debug lines to highlight the top edges of the target box
         debug_lines.append(p.addUserDebugLine([x_min, y_min, z_max], [x_min, y_max, z_max], [1, 0, 0], 2))
@@ -210,7 +219,7 @@ if __name__ == '__main__':
 
     # Create a grid of boxes (targets for throwing)
     boxes_position = [1.0, 0.0]
-    _, target_positions = load_boxes_with_dividers(length=0.25, width=0.15, height=0.2, n_rows=3, n_cols=3, position=boxes_position)
+    _, target_positions = load_boxes_with_dividers(length=0.25, width=0.15, height=0.1, n_rows=3, n_cols=3, position=boxes_position)
 
     # Create the Physics Agent
     p_module, g_module, t_module = PerceptionModule(), GraspingModule(), ThrowingModule()

@@ -1,3 +1,4 @@
+import math
 import random
 import numpy as np
 import pybullet as p
@@ -224,7 +225,7 @@ class TossObjects(BaseScene):
             position=self.scene_config['box_position'],
         )
 
-    def load_workspace(self, length=0.3, width=0.4, position=[0.3, 0.0]):
+    def load_workspace(self, length=0.3, width=0.4, height=0.02, position=[0.3, 0.0]):
         """
         Create a workspace with walls in the simulation.
 
@@ -234,7 +235,6 @@ class TossObjects(BaseScene):
             position (list): Center position [x, y] of the workspace.
         """
         thickness = 0.01
-        height = 0.2
         color = [0.8, 0.8, 0.8, 1.0]
         self.workspace_ids = []
         
@@ -257,7 +257,7 @@ class TossObjects(BaseScene):
                                 position=[position[0], position[1] + width / 2, height / 2 + thickness], 
                                 mass=0, color=color))
 
-    def load_boxes_with_dividers(self, length=0.25, width=0.15, height=0.2, n_rows=4, n_cols=3, position=[0.0, 0.0]):
+    def load_boxes_with_dividers(self, length=0.25, width=0.15, height=0.1, n_rows=4, n_cols=3, position=[0.0, 0.0]):
         """
         Create a grid of hollow boxes separated by dividers using thin box walls.
 
@@ -350,9 +350,6 @@ class TossObjects(BaseScene):
 
         self.object_ids = []
 
-        # assert self.objects_config['n_object'] <= 3, "Too many objects"
-
-        z = 0.02
         for i in range(self.objects_config['n_object']):
             object_type = 0
             # object_type = random.randint(0, len(self.objects_config['object_types']) - 1)
@@ -364,14 +361,20 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin,
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
+            yaw = random.uniform(-math.pi, math.pi)
+            # # During test, fix the object's position
+            # # NOTE: should be removed after testing
+            # x = self.scene_config['workspace_position'][0]
+            # y = self.scene_config['workspace_position'][1]
+
             if self.objects_config['object_types'][object_type] == 'ball':
-                object_id = create_sphere(position=[-0.2, 0.25, 0.2], radius=0.02, mass=0.1)
+                object_id = create_sphere(position=[x, y, 0.02], radius=0.02, mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'cube':
-                object_id = create_box(position=[0.0, 0.25, 0.2], half_extents=[0.02, 0.02, 0.02], mass=0.1)
+                object_id = create_box(position=[x, y, 0.02], half_extents=[0.02, 0.02, 0.02], mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'rod':
-                object_id = create_cylinder(position=[0.2, 0.25, 0.2], radius=0.015, height=0.16, mass=0.1)
+                object_id = create_cylinder(position=[x, y, 0.015], orientation=[0.0, np.pi / 2, 0.0], radius=0.015, height=0.16, mass=0.1)
             elif self.objects_config['object_types'][object_type] == 'hammer':
-                object_id = create_hammer(position=[0.0, 0.0, 0.2], orientation=[np.pi / 2, 0.0, 0.0], 
+                object_id = create_hammer(position=[x, y, 0.02], orientation=[0.0, np.pi / 2, 0.0], 
                                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
                                           color=random_color())
             
@@ -387,6 +390,8 @@ class TossObjects(BaseScene):
 
     def reset_task(self, init=False):
         self.select_target_box()
+
+        self.post_throw_settle_count = 0
 
         if init:
             self.grasp_success = False
@@ -442,7 +447,9 @@ class TossObjects(BaseScene):
             is_action_finished = True
         elif not self.throw_completed:
             self.throw_completed = self.robot.throw(tcp_target_pose=self.throw_pose, tcp_target_velocity=self.throw_velocity)
-            if self.throw_completed:
+        elif self.post_throw_settle_count < int(1 / self.control_timestep): # Wait 1 second here for settling the objects.
+            self.post_throw_settle_count += 1
+            if self.post_throw_settle_count == int(1 / self.control_timestep):
                 self.check_throw_success()
         else:
             is_action_finished = True
