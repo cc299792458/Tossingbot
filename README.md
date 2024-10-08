@@ -37,6 +37,8 @@ Robot type: Franka Panda
 
 ### Netoworks
 
+### Perception
+
 ### Physics Controller
 
 ### Prediction Method
