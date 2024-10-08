@@ -1,6 +1,8 @@
 # Tossingbot
 This repository is used to **replicate** the TossingBot(https://tossingbot.cs.princeton.edu/) implementation.
 
+## Installation
+
 ## Simulation
 
 [Pybullet](https://pybullet.org/wordpress/) simulator is used for this project.
