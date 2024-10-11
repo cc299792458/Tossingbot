@@ -44,7 +44,7 @@ if __name__ == '__main__':
             'box_n_cols': box_n_cols,
             'box_length': box_length,
         },
-        objects_config={"object_types": ['ball', 'cube']},
+        objects_config={"object_types": ['ball', 'cube', 'rod']},
         camera_config={'n_rotations': n_rotations}
     )
 
@@ -96,5 +96,5 @@ if __name__ == '__main__':
     avg_throw_success = np.mean(throw_success_history) if throw_success_history else 0.0
 
     # Print final results
-    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 1.000
-    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 0.990
+    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 1.000 / 0.990 / 0.980
+    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 0.990 / 0.556 / 0.796

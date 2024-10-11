@@ -25,12 +25,11 @@ class BaseScene:
         # Initialize the simulation
         self.start_simulation()
 
-        # Load the ground plane and scene-specific elements
-        self.load_ground_plane()
+        # Load the scene and the robot
         self.load_scene()
         self.load_robot()
 
-        # Reset scene to its initial state
+        # Reset scene and robot to the initial state
         self.reset()
     
     ############### Initialization ###############
@@ -42,12 +41,6 @@ class BaseScene:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, self.gravity)
         p.setTimeStep(self.timestep)
-
-    def load_ground_plane(self):
-        """
-        Loads a flat ground plane into the simulation.
-        """
-        self.plane_id = p.loadURDF("plane.urdf")
 
     def load_scene(self):
         """

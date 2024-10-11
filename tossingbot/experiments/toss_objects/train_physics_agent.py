@@ -71,7 +71,7 @@ if __name__ == '__main__':
     n_rotations = 1
     phi_deg = 45
 
-    total_episodes = 200
+    total_episodes = 2_000
 
     # Lists to track the cumulative success rates over all episodes
     avg_grasp_success_history = []
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         task_config={
             'use_heuristic': use_heuristic,
         },
-        objects_config={"object_types": ['ball', 'cube']},
+        objects_config={"object_types": ['ball', 'cube', 'rod']},
         camera_config={'n_rotations': n_rotations},
     )
 

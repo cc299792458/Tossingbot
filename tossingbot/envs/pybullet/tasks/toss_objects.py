@@ -106,6 +106,8 @@ class TossObjects(BaseScene):
         default_objects_config = {
             "n_object": 1,
             "object_types": ['ball', 'cube', 'rod', 'hammer'],
+            "lateral_friction": 1.0,
+            "rolling_friction": 0.5,
         }
         if objects_config is not None:
             default_objects_config.update(objects_config)
@@ -210,7 +212,8 @@ class TossObjects(BaseScene):
         """
         Load the tossing object scene in PyBullet.
         """
-        # Load workspace and boxes
+        # Load plane, workspace and boxes
+        self.load_ground_plane()
         self.load_workspace(
             length=self.scene_config['workspace_length'],
             width=self.scene_config['workspace_width'],
@@ -224,6 +227,12 @@ class TossObjects(BaseScene):
             n_cols=self.scene_config['box_n_cols'],
             position=self.scene_config['box_position'],
         )
+
+    def load_ground_plane(self):
+        """
+        Loads a flat ground plane into the simulation.
+        """
+        self.plane_id = p.loadURDF("plane.urdf")
 
     def load_workspace(self, length=0.3, width=0.4, height=0.02, position=[0.3, 0.0]):
         """
@@ -376,7 +385,7 @@ class TossObjects(BaseScene):
             else:
                 raise NotImplementedError
             
-            # p.changeDynamics(object_id, -1, lateralFriction=2.0, rollingFriction=0.01)
+            p.changeDynamics(object_id, -1, lateralFriction=self.objects_config['lateral_friction'], rollingFriction=self.objects_config['rolling_friction'])
 
             self.object_ids.append(object_id)
         

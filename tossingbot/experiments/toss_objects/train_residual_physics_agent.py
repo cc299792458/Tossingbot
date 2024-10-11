@@ -91,7 +91,7 @@ if __name__ == '__main__':
         task_config={
             'use_heuristic': use_heuristic,
         },
-        objects_config={"object_types": ['ball', 'cube']},
+        objects_config={"object_types": ['ball', 'cube', 'rod']},
         camera_config={'n_rotations': n_rotations}
     )
 
