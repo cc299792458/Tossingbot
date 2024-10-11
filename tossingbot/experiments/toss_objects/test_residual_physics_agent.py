@@ -96,6 +96,6 @@ if __name__ == '__main__':
     avg_grasp_success = np.mean(grasp_success_history)
     avg_throw_success = np.mean(throw_success_history) if throw_success_history else 0.0
 
-    # Grasp Success: 1.000 | Throw Success: 0.960 for 2000 steps, 0.930 for 1000 steps, 0.869 for 300 steps 
+    # Grasp Success: 1.000 | Throw Success: 0.990
     print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")
     print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")

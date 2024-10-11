@@ -97,4 +97,4 @@ if __name__ == '__main__':
 
     # Print final results
     print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 1.000
-    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 1.000
+    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 0.990

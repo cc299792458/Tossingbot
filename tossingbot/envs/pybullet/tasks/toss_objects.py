@@ -442,7 +442,8 @@ class TossObjects(BaseScene):
             self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.post_grasp_pose)
             if self.grasp_completed:
                 self.check_grasp_success()
-                self.consecutive_grasp_failures = self.consecutive_grasp_failures + 1 if not self.grasp_success else 0
+                if self.task_config['use_heuristic']:
+                    self.consecutive_grasp_failures = self.consecutive_grasp_failures + 1 if not self.grasp_success else 0
         elif not self.grasp_success:
             is_action_finished = True
         elif not self.throw_completed:

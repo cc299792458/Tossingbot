@@ -66,11 +66,12 @@ if __name__ == '__main__':
     use_gui = False
     box_length = 0.15
     box_n_rows, box_n_cols = 3, 3
+    use_heuristic = False
 
     n_rotations = 1
     phi_deg = 45
 
-    total_episodes = 100
+    total_episodes = 200
 
     # Lists to track the cumulative success rates over all episodes
     avg_grasp_success_history = []
@@ -87,6 +88,9 @@ if __name__ == '__main__':
             'box_n_rows': box_n_rows,
             'box_n_cols': box_n_cols,
             'box_length': box_length,
+        },
+        task_config={
+            'use_heuristic': use_heuristic,
         },
         objects_config={"object_types": ['ball', 'cube']},
         camera_config={'n_rotations': n_rotations},
@@ -114,7 +118,8 @@ if __name__ == '__main__':
         grasping_module=grasping_module, 
         throwing_module=throwing_module,
         physics_controller=physics_controller,
-        epsilons=[0.0, 0.0]  # Disable epsilon-greedy for this test
+        epsilons=[0.5, 0.1],
+        total_episodes=total_episodes,
     )
 
     # Optimizer
