@@ -6,31 +6,112 @@ import pybullet_data
 
 from scipy.spatial.transform import Rotation as R
 
-class SimObject:
+class BaseObject:
     def __init__(
             self, 
             position=np.array([0, 0, 1]), 
             orientation=np.array([0, 0, 0]), 
             mass=0.1, 
-            color=[0.5, 0.5, 0.5, 1]):
+            color=[0.5, 0.5, 0.5, 1],
+            lateral_friction=0.5,
+            rolling_friction=0.0,
+        ):
+        self.object_ids = []
+        self.init_pose = [position, orientation]
         self.mass = mass
         self.color = color
+        self.lateral_friction = lateral_friction
+        self.rolling_friction = rolling_friction
 
         self._create_object()
 
     def _create_object(self):
         raise NotImplementedError
     
-class Ball(SimObject):
-    pass
+    def _remove_object(self):
+        for object_id in self.object_ids:
+            p.removeBody(object_id)
+    
+    @property
+    def object_id(self):
+        return self.object_ids[0]
 
-class Cube(SimObject):
-    pass
+    @property
+    def pose(self):
+        position, orientation = p.getBasePositionAndOrientation(self.object_ids[0])
+        return (np.array(position), np.array(orientation))
+    
+    @property
+    def velocity(self):
+        linear_velocity, angular_velocity = p.getBaseVelocity(self.object_ids[0])
+        return (np.array(linear_velocity), np.array(angular_velocity))
+    
+class Ball(BaseObject):
+    def __init__(
+            self, 
+            position=np.array([0, 0, 1]), 
+            orientation=np.array([0, 0, 0]), 
+            mass=0.1, 
+            color=[1.0, 0.0, 0.0, 1], 
+            lateral_friction=0.5, 
+            rolling_friction=0,
+            radius=0.5):
+        self.radius = radius
+        super().__init__(position, orientation, mass, color, lateral_friction, rolling_friction)
+    
+    def _create_object(self):
+        collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=self.radius)
+        position = self.init_pose[0]
+        sphere_id = p.createMultiBody(self.mass, collision_shape, -1, position)
+        p.changeVisualShape(sphere_id, -1, rgbaColor=self.color)
+        p.changeDynamics(sphere_id, -1, lateralFriction=self.lateral_friction, rollingFriction=self.rolling_friction)
+        self.object_ids.append(sphere_id)
 
-class Rod(SimObject):
-    pass
+class Cube(BaseObject):
+    def __init__(
+            self, 
+            position=np.array([0, 0, 1]), 
+            orientation=np.array([0, 0, 0]), 
+            mass=0.1, 
+            color=[0.0, 1.0, 0.0, 1], 
+            lateral_friction=0.5, 
+            rolling_friction=0,
+            half_extents=[0.5, 0.5, 0.5]):
+        self.half_extents = half_extents
+        super().__init__(position, orientation, mass, color, lateral_friction, rolling_friction)
+    
+    def _create_object(self):
+        collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=self.half_extents)
+        position, orientation = self.init_pose[0], p.getQuaternionFromEuler(self.init_pose[1])
+        cube_id = p.createMultiBody(self.mass, collision_shape, -1, position, orientation)
+        p.changeVisualShape(cube_id, -1, rgbaColor=self.color)
+        p.changeDynamics(cube_id, -1, lateralFriction=self.lateral_friction, rollingFriction=self.rolling_friction)
+        self.object_ids.append(cube_id)
 
-class Hammer(SimObject):
+class Rod(BaseObject):
+    def __init__(
+            self, 
+            position=np.array([0, 0, 1]), 
+            orientation=np.array([0, 0, 0]), 
+            mass=0.1, 
+            color=[0.0, 0.0, 1.0, 1], 
+            lateral_friction=0.5, 
+            rolling_friction=0,
+            radius=0.3,
+            height=1.0):
+        self.radius = radius
+        self.height = height
+        super().__init__(position, orientation, mass, color, lateral_friction, rolling_friction)
+    
+    def _create_object(self):
+        collision_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=self.radius, height=self.height)
+        position, orientation = self.init_pose[0], p.getQuaternionFromEuler(self.init_pose[1])
+        rod_id = p.createMultiBody(self.mass, collision_shape, -1, position, orientation)
+        p.changeVisualShape(rod_id, -1, rgbaColor=self.color)
+        p.changeDynamics(rod_id, -1, lateralFriction=self.lateral_friction, rollingFriction=self.rolling_friction)
+        self.object_ids.append(rod_id)
+
+class Hammer(BaseObject):
     pass
 
 # Object Creation Functions
@@ -146,9 +227,12 @@ if __name__ == '__main__':
     # Create objects in the simulation
     create_plane()
     
-    create_sphere(position=[-0.2, 0.25, 0.2], radius=0.02, mass=0.1)
-    create_box(position=[0.0, 0.25, 0.2], half_extents=[0.02, 0.02, 0.02], mass=0.1)
-    create_cylinder(position=[0.2, 0.25, 0.2], radius=0.015, height=0.16, mass=0.1)
+    ball = Ball(position=np.array([-0.2, 0.25, 0.2]), mass=0.1, lateral_friction=1.0, rolling_friction=0.5, 
+                radius=0.02)
+    cube = Cube(position=np.array([0.0, 0.25, 0.2]), mass=0.1, lateral_friction=1.0, rolling_friction=0.5, 
+                half_extents=[0.02, 0.02, 0.02])
+    rod = Rod(position=np.array([0.2, 0.25, 0.2]), orientation=np.array([0.0, np.pi / 2, 0.0]), 
+              mass=0.1, lateral_friction=1.0, rolling_friction=0.5, radius=0.015, height=0.16)
     create_hammer(position=[0.0, 0.0, 0.2], orientation=[np.pi / 2, 0.0, 0.0], 
                   cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], color=random_color())
 

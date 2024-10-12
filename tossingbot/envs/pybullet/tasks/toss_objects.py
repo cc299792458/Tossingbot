@@ -7,11 +7,9 @@ from tossingbot.envs.pybullet.robot import UR5Robotiq85, Panda
 from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
 from tossingbot.envs.pybullet.utils.math_utils import yaw_to_quaternion, pose_distance
 from tossingbot.envs.pybullet.utils.objects_utils import (
-    create_sphere,
     create_box, 
-    create_cylinder, 
-    create_hammer,
     random_color,
+    Ball, Cube, Rod, Hammer
 )
 from tossingbot.envs.pybullet.utils.camera_utils import (
     visualize_camera,
@@ -353,11 +351,13 @@ class TossObjects(BaseScene):
         Randomly place objects in the workspace.
         """
         # Remove existing objects if they exist
-        if hasattr(self, 'object_ids'):
-            for object_id in self.object_ids:
-                p.removeBody(object_id)
+        if hasattr(self, 'objects'):
+            for _object in self.objects:
+                _object._remove_object()
+                del _object
 
-        self.object_ids = []
+        # self.object_ids = []
+        self.objects = []
         thickness = self.scene_config['workspace_thickness']
 
         for i in range(self.objects_config['n_object']):
@@ -373,21 +373,24 @@ class TossObjects(BaseScene):
             yaw = random.uniform(-math.pi, math.pi)
 
             if self.objects_config['object_types'][object_type] == 'ball':
-                object_id = create_sphere(position=[x, y, 0.02 + thickness], radius=0.02, mass=0.1)
+                _object = Ball(position=np.array([x, y, 0.02 + thickness]), mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
+                            rolling_friction=self.objects_config['rolling_friction'], radius=0.02)
             elif self.objects_config['object_types'][object_type] == 'cube':
-                object_id = create_box(position=[x, y, 0.02 + thickness], half_extents=[0.02, 0.02, 0.02], mass=0.1)
+                _object = Cube(position=np.array([x, y, 0.02 + thickness]), mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
+                            rolling_friction=self.objects_config['rolling_friction'], half_extents=[0.02, 0.02, 0.02])
             elif self.objects_config['object_types'][object_type] == 'rod':
-                object_id = create_cylinder(position=[x, y, 0.015 + thickness], orientation=[0.0, np.pi / 2, 0.0], radius=0.015, height=0.16, mass=0.1)
+                _object = Rod(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([0.0, np.pi / 2, 0.0]), \
+                              mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
+                              rolling_friction=self.objects_config['rolling_friction'], radius=0.015, height=0.16)
             elif self.objects_config['object_types'][object_type] == 'hammer':
-                object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
-                                          cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
-                                          color=random_color())
+                # object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
+                #                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
+                #                           color=random_color())
+                pass
             else:
                 raise NotImplementedError
             
-            p.changeDynamics(object_id, -1, lateralFriction=self.objects_config['lateral_friction'], rollingFriction=self.objects_config['rolling_friction'])
-
-            self.object_ids.append(object_id)
+            self.objects.append(_object)
         
         # # Perform simulation steps for 0.1 second to stabilize the scene
         # for _ in range(int(1 / (10 * self.timestep))):
@@ -403,7 +406,7 @@ class TossObjects(BaseScene):
         if init:
             self.grasp_success = False
             self.throw_success = False
-            self.grasped_object_id = None
+            self.grasped_object = None
             self.landing_box = (-1, -1)
 
             if self.task_config['use_heuristic']:
@@ -439,8 +442,8 @@ class TossObjects(BaseScene):
         self.reset_task()
 
     def does_workspace_need_reset(self):
-        for object_id in self.object_ids:
-            if self.is_object_in_workspace(object_id=object_id):
+        for _object in self.objects:
+            if self.is_object_in_workspace(_object=_object):
                 return False
         return True
 
@@ -667,10 +670,9 @@ class TossObjects(BaseScene):
     
     def get_info(self):
         return {
-            "objects_id": self.object_ids,
-            "object_poses": [p.getBasePositionAndOrientation(object_id) for object_id in self.object_ids],
+            "objects": self.objects,
             "grasp_success": self.grasp_success,
-            "grasped_object_id": self.grasped_object_id,
+            "grasped_object": self.grasped_object,
             "throw_success": self.throw_success,
             "next_grasp_with_heuristic": (
             self.task_config['use_heuristic'] and
@@ -681,47 +683,36 @@ class TossObjects(BaseScene):
     def check_grasp_success(self):
         grasp_success = not self.robot._is_gripper_closed(tolerance=1e-2)
         if grasp_success:
-            object_ids = [
-                object_id for object_id in self.object_ids 
-                if pose_distance(self.get_object_pose(object_id), self.robot.get_tcp_pose())[0] < 0.1 
-                    and self.get_object_pose(object_id)[0][2] > 0.02 + self.scene_config['workspace_thickness'] + 0.001
+            objects = [
+                _object for _object in self.objects 
+                if pose_distance(_object.pose, self.robot.get_tcp_pose())[0] < 0.1 
+                    and _object.pose[0][2] > 0.02 + self.scene_config['workspace_thickness'] + 0.001
             ]
-            assert len(object_ids) <= 1, "There should be exactly 1 object grasped."
-            if len(object_ids) == 0:
+            assert len(objects) <= 1, "There should be exactly 1 object grasped."
+            if len(objects) == 0:
                 grasp_success = False   # Double check
-                object_id = None
+                _object = None
             else:
-                object_id = object_ids[0]   # Extract the single object ID
+                _object = objects[0]   # Extract the single object ID
         else:
-            object_id = None
+            _object = None
 
         self.grasp_success = grasp_success
-        self.grasped_object_id = object_id
+        self.grasped_object = _object
 
     def check_throw_success(self):
-        self.throw_success = self.is_object_in_target_box(object_id=self.grasped_object_id)
+        self.throw_success = self.is_object_in_target_box(_object=self.grasped_object)
 
         if self.grasp_success:
             for row in range(self.scene_config['box_n_rows']):
                 for col in range(self.scene_config['box_n_cols']):
-                    if self.is_object_in_box(self.grasped_object_id, row, col):
-                        self.landing_box = (row, col)
-                        
+                    if self.is_object_in_box(self.grasped_object, row, col):
+                        self.landing_box = (row, col)   
                         return
-            
         self.landing_box = (-1, -1)
-
-    def get_object_pose(self, object_id):
-        if object_id in self.object_ids:
-            position, orientation = p.getBasePositionAndOrientation(object_id)
-            pose = (position, orientation)
-        else:
-            pose = None
-
-        return pose
     
-    def is_object_in_workspace(self, object_id, margin=0.1):
-        object_pos = self.get_object_pose(object_id=object_id)[0]
+    def is_object_in_workspace(self, _object, margin=0.1):
+        object_pos = _object.pose[0]
         workspace_xlim = self.scene_config['workspace_xlim']
         workspace_ylim = self.scene_config['workspace_ylim']
         
@@ -731,8 +722,8 @@ class TossObjects(BaseScene):
         
         return in_x_range and in_y_range
     
-    def is_object_in_target_box(self, object_id):
-        object_pos = self.get_object_pose(object_id=object_id)[0]
+    def is_object_in_target_box(self, _object):
+        object_pos = _object.pose[0]
         box_length = self.scene_config['box_length']
         box_width = self.scene_config['box_width']
         
@@ -744,9 +735,9 @@ class TossObjects(BaseScene):
         
         return in_x_range and in_y_range
     
-    def is_object_in_box(self, object_id, row, col):
+    def is_object_in_box(self, _object, row, col):
         # Get object position
-        object_pos = self.get_object_pose(object_id=object_id)[0]
+        object_pos = _object.pose[0]
 
         # Get box dimensions and position
         box_length = self.scene_config['box_length']
@@ -776,20 +767,12 @@ class TossObjects(BaseScene):
         box_y = central_position[1] + col_offset * box_width
         
         return box_x, box_y
-    
-    def get_object_velocity(self, object_id):
-        if object_id in self.object_ids:
-            linear_velocity, angular_velocity = p.getBaseVelocity(object_id)
-            velocity = (linear_velocity, angular_velocity)
-            return velocity
-        else:
-            return None
         
-    def is_object_static(self, object_id, linear_threshold=0.01, angular_threshold=0.01):
-        object_velocity = self.get_object_velocity(object_id=object_id)
+    def is_object_static(self, _object, linear_threshold=0.01, angular_threshold=0.01):
+        object_velocity = _object.velocity
     
         # Ensure object_velocity is not None
-        assert object_velocity is not None, f"Object with ID {object_id} does not exist or has no velocity data."
+        assert object_velocity is not None, f"Object with ID {_object.object_id} does not exist or has no velocity data."
 
         linear_velocity, angular_velocity = object_velocity
         return np.all(np.abs(linear_velocity) < linear_threshold) and np.all(np.abs(angular_velocity) < angular_threshold)
