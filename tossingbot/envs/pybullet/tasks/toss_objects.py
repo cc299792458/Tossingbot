@@ -8,7 +8,6 @@ from tossingbot.envs.pybullet.tasks.base_scene import BaseScene
 from tossingbot.envs.pybullet.utils.math_utils import yaw_to_quaternion, pose_distance
 from tossingbot.envs.pybullet.utils.objects_utils import (
     create_box, 
-    random_color,
     Ball, Cube, Rod, Hammer
 )
 from tossingbot.envs.pybullet.utils.camera_utils import (
@@ -356,7 +355,6 @@ class TossObjects(BaseScene):
                 _object._remove_object()
                 del _object
 
-        # self.object_ids = []
         self.objects = []
         thickness = self.scene_config['workspace_thickness']
 
@@ -379,22 +377,24 @@ class TossObjects(BaseScene):
                 _object = Cube(position=np.array([x, y, 0.02 + thickness]), mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
                             rolling_friction=self.objects_config['rolling_friction'], half_extents=[0.02, 0.02, 0.02])
             elif self.objects_config['object_types'][object_type] == 'rod':
-                _object = Rod(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([0.0, np.pi / 2, 0.0]), \
+                _object = Rod(position=np.array([x, y, 0.015 + thickness]), orientation=np.array([0.0, np.pi / 2, 0.0]), \
                               mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
                               rolling_friction=self.objects_config['rolling_friction'], radius=0.015, height=0.16)
             elif self.objects_config['object_types'][object_type] == 'hammer':
+                _object = Hammer(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([np.pi / 2, 0.0, np.pi / 2]), 
+                                 handle_mass=0.05, head_mass=0.05, lateral_friction=1.0, rolling_friction=0.5, handle_radius=0.01, 
+                                 handle_height=0.12, head_half_extents=[0.05, 0.02, 0.0125])
                 # object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
                 #                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
                 #                           color=random_color())
-                pass
             else:
                 raise NotImplementedError
             
             self.objects.append(_object)
         
-        # # Perform simulation steps for 0.1 second to stabilize the scene
-        # for _ in range(int(1 / (10 * self.timestep))):
-        #     self.simulation_step()
+        # Perform simulation steps for 0.05 second to stabilize the scene
+        for _ in range(int(1 / (20 * self.timestep))):
+            self.simulation_step()
 
         return None
 
@@ -772,7 +772,7 @@ class TossObjects(BaseScene):
         object_velocity = _object.velocity
     
         # Ensure object_velocity is not None
-        assert object_velocity is not None, f"Object with ID {_object.object_id} does not exist or has no velocity data."
+        assert object_velocity is not None, f"Object with ID {_object.object_ids} does not exist or has no velocity data."
 
         linear_velocity, angular_velocity = object_velocity
         return np.all(np.abs(linear_velocity) < linear_threshold) and np.all(np.abs(angular_velocity) < angular_threshold)
