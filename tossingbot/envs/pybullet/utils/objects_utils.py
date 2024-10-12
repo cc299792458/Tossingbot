@@ -6,6 +6,33 @@ import pybullet_data
 
 from scipy.spatial.transform import Rotation as R
 
+class SimObject:
+    def __init__(
+            self, 
+            position=np.array([0, 0, 1]), 
+            orientation=np.array([0, 0, 0]), 
+            mass=0.1, 
+            color=[0.5, 0.5, 0.5, 1]):
+        self.mass = mass
+        self.color = color
+
+        self._create_object()
+
+    def _create_object(self):
+        raise NotImplementedError
+    
+class Ball(SimObject):
+    pass
+
+class Cube(SimObject):
+    pass
+
+class Rod(SimObject):
+    pass
+
+class Hammer(SimObject):
+    pass
+
 # Object Creation Functions
 def create_sphere(radius=0.5, position=[0, 0, 1], mass=0.1, color=[1, 0, 0, 1]):
     """Creates a sphere in the PyBullet simulation."""

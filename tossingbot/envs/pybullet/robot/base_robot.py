@@ -133,9 +133,9 @@ class BaseRobot:
 
         assert len(self.controllable_joints) >= self.num_arm_dofs, "Not enough controllable joints"
         self.arm_controllable_joints = self.controllable_joints[:self.num_arm_dofs]
-        self.arm_lower_limits = [info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
-        self.arm_upper_limits = [info.upper_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
-        self.arm_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs]
+        self.arm_lower_limits = np.array([info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs])
+        self.arm_upper_limits = np.array([info.upper_limit for info in self.joints if info.controllable][:self.num_arm_dofs])
+        self.arm_joint_ranges = np.array([info.upper_limit - info.lower_limit for info in self.joints if info.controllable][:self.num_arm_dofs])
 
     def _store_link_information(self, change_dynamics=False):
         """
@@ -241,7 +241,7 @@ class BaseRobot:
         Returns:
             list: Current positions of arm controllable joints.
         """
-        return [p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints]
+        return np.array([p.getJointState(self.robot_id, joint_id)[0] for joint_id in self.arm_controllable_joints])
 
     def get_arm_joint_velocity(self):
         """
@@ -250,7 +250,7 @@ class BaseRobot:
         Returns:
             list: Current velocities of arm controllable joints.
         """
-        return [p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.arm_controllable_joints]
+        return np.array([p.getJointState(self.robot_id, joint_id)[1] for joint_id in self.arm_controllable_joints])
     
     def get_arm_joint_torque(self):
         """
@@ -259,7 +259,7 @@ class BaseRobot:
         Returns:
             list: Current motor torques applied by the motors on the arm controllable joints.
         """
-        return [p.getJointState(self.robot_id, joint_id)[3] for joint_id in self.arm_controllable_joints]
+        return np.array([p.getJointState(self.robot_id, joint_id)[3] for joint_id in self.arm_controllable_joints])
 
     ############### set tcp pose, get tcp pose, and inverse kinematics ###############
     def set_tcp_pose(self, tcp_pose):
@@ -313,8 +313,8 @@ class BaseRobot:
                 - orientation: [qx, qy, qz, qw]
         """
         link_state = p.getLinkState(self.robot_id, self.tcp_id)
-        position = link_state[0]
-        orientation = link_state[1]
+        position = np.array(link_state[0])
+        orientation = np.array(link_state[1])
         return [position, orientation]
     
     def get_tcp_target_pose(self):
@@ -333,8 +333,8 @@ class BaseRobot:
                 - angular_velocity: [wx, wy, wz]
         """
         link_state = p.getLinkState(self.robot_id, self.tcp_id, computeLinkVelocity=True)
-        linear_velocity = link_state[6]
-        angular_velocity = link_state[7]
+        linear_velocity = np.array(link_state[6])
+        angular_velocity = np.array(link_state[7])
         return [linear_velocity, angular_velocity]
 
     ############### Pose and Velocity Inverse Kinematics ###############
@@ -365,7 +365,7 @@ class BaseRobot:
             restPoses=rest_pose,
             maxNumIterations=100
         )
-        return joint_position[:self.num_arm_dofs]
+        return np.array(joint_position[:self.num_arm_dofs])
 
     def velocity_ik(self, linear_velocity, angular_velocity):
         """
@@ -393,7 +393,7 @@ class BaseRobot:
         desired_velocity = np.hstack((linear_velocity, angular_velocity))  # Desired velocity vector
         joint_velocities = np.linalg.pinv(jacobian).dot(desired_velocity)  # Compute joint velocities using Jacobian
 
-        return joint_velocities[:self.num_arm_dofs]
+        return np.array(joint_velocities[:self.num_arm_dofs])
     
     def get_joint_position(self):
         """
@@ -442,7 +442,7 @@ class BaseRobot:
         raise NotImplementedError
         
     ############### motion primitives ###############
-    def grasp(self, tcp_target_pose, post_grasp_pose=([0.3, 0.0, 0.3], (0.0, 0.0, 0.0, 1.0)), estimate_speed=0.2, gripper_duration=1.0):
+    def grasp(self, tcp_target_pose, post_grasp_pose, estimate_speed=0.2, gripper_duration=1.0):
         """
         Perform a grasping action at the target TCP pose in a step-by-step manner.
         
@@ -495,7 +495,7 @@ class BaseRobot:
             self.grasp_start_times = []
         self.grasp_start_times.append(len(self.joint_position_log))
 
-        self.pre_grasp_pose = [list(tcp_target_pose[0][:2]) + [0.3], tcp_target_pose[1]]  # Pose above the target
+        self.pre_grasp_pose = [np.array(list(tcp_target_pose[0][:2]) + [0.3]), tcp_target_pose[1]]  # Pose above the target
         self.tcp_target_pose = tcp_target_pose
 
         # Generate trajectory to pre-grasp position
@@ -616,17 +616,17 @@ class BaseRobot:
         self.tcp_target_velocity = tcp_target_velocity
 
         # Calculate the pre-throw position based on velocity and timestep
-        pre_throw_position = [
+        pre_throw_position = np.array([
             tcp_target_pose[0][i] - tcp_target_velocity[0][i] * self.control_timestep * settling_steps
             for i in range(3)
-        ]
-        self.pre_throw_pose = (pre_throw_position, tcp_target_pose[1])
+        ])
+        self.pre_throw_pose = [pre_throw_position, tcp_target_pose[1]]
 
         # Generate the trajectory towards the release point
         self._tcp_trajectory = self._generate_tcp_trajectory(
             self.get_tcp_pose(),
             self.pre_throw_pose,
-            start_tcp_vel=([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            start_tcp_vel=[np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0])],
             target_tcp_vel=tcp_target_velocity,
         )
         self._trajectory_index = 0
@@ -674,11 +674,11 @@ class BaseRobot:
         """Update target pose based on current velocity and remaining settling steps."""
         target_pos, target_quat = tcp_target_pose
         remaining_steps = settling_steps - self.gripper_open_count
-        current_target_pos = [
+        current_target_pos = np.array([
             target_pos[i] - self.tcp_target_velocity[0][i] * self.control_timestep * remaining_steps
             for i in range(3)
-        ]
-        self._tcp_target_pose = (current_target_pos, target_quat)
+        ])
+        self._tcp_target_pose = [current_target_pos, target_quat]
         self._joint_target_position = self.pose_ik(self._tcp_target_pose)
         self._tcp_target_velocity = self.tcp_target_velocity
 
@@ -690,7 +690,7 @@ class BaseRobot:
         self._tcp_target_velocity = np.zeros([2, 3])
 
         # Check if all joint velocities are close to zero
-        if all(abs(vel) < 0.01 for vel in joint_velocities):
+        if all(np.abs(vel) < 0.01 for vel in joint_velocities):
             return self._finalize_throw_process()
 
         return False
@@ -791,10 +791,10 @@ class BaseRobot:
         for i in range(num_steps):
             # Each subtarget is a list combining position, orientation (quaternion), linear velocity, and rotational velocity
             subtarget = [
-                (pos_trajectory[i].tolist(),    # Position
-                ori_trajectory[i].tolist()),    # Orientation (quaternion)
-                (vel_trajectory[i].tolist(),    # Linear velocity
-                rot_vel_trajectory[i].tolist()) # Angular velocity
+                [pos_trajectory[i],    # Position
+                ori_trajectory[i]],    # Orientation (quaternion)
+                [vel_trajectory[i],    # Linear velocity
+                rot_vel_trajectory[i]] # Angular velocity
             ]
             subtargets.append(subtarget)
         

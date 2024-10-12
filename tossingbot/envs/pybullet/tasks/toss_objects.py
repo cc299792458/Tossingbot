@@ -91,8 +91,8 @@ class TossObjects(BaseScene):
 
         # Default robot configuration
         default_robot_config = {
-            "base_position": [0.0, 0.0, 0.0],
-            "base_orientation": [0.0, 0.0, 0.0],
+            "base_position": np.array([0.0, 0.0, 0.0]),
+            "base_orientation": np.array([0.0, 0.0, 0.0]),
             "gripper_control_mode": 'position',
             "use_gripper_gear": True,
             "robot_type": 'panda',
@@ -429,7 +429,7 @@ class TossObjects(BaseScene):
         grasp_z = 0.02 + thickness
 
         # Define the grasp pose (position and yaw orientation), post grasp pose, throw pose, and throw velocity
-        self.grasp_pose = ([grasp_x, grasp_y, grasp_z], yaw_to_quaternion(yaw))  # Grasp pose with quaternion representation
+        self.grasp_pose = [np.array([grasp_x, grasp_y, grasp_z]), np.array(yaw_to_quaternion(yaw))]  # Grasp pose with quaternion representation
 
     def post_simulation_process(self, completed_and_static):
         if completed_and_static and self.does_workspace_need_reset():
@@ -516,7 +516,7 @@ class TossObjects(BaseScene):
         target_x, target_y = self.get_box_position(row=target_row, col=target_col)
 
         # Set target position
-        self.target_position = [target_x, target_y, height]
+        self.target_position = np.array([target_x, target_y, height])
 
         if self.use_gui and self.visualize_config['visualize_target']:
             self.visualize_target()

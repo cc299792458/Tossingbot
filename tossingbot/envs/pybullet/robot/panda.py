@@ -35,10 +35,10 @@ class Panda(BaseRobot):
         self.num_gripper_dofs = 2
 
         # Default joint and gripper positions (in radians)
-        self.initial_position = initial_position if initial_position else [
+        self.initial_position = initial_position if initial_position else np.array([
             0.0, -np.pi / 4, 0.0, -np.pi, 0.0, np.pi * 3 / 4, np.pi / 4,  # Joints
             0.04, 0.04  # Gripper (open)
-        ]
+        ])
 
         super().__init__(timestep, control_timestep, base_position, base_orientation, gripper_control_mode, use_gripper_gear, robot_type='panda')
 
@@ -49,12 +49,12 @@ class Panda(BaseRobot):
         super()._parse_joint_information()
         
         self.gripper_controllable_joints = self.controllable_joints[self.num_arm_dofs:]
-        self.gripper_lower_limits = [info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
-        self.gripper_upper_limits = [info.upper_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
-        self.gripper_joint_ranges = [info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:]
+        self.gripper_lower_limits = np.array([info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:])
+        self.gripper_upper_limits = np.array([info.upper_limit for info in self.joints if info.controllable][self.num_arm_dofs:])
+        self.gripper_joint_ranges = np.array([info.upper_limit - info.lower_limit for info in self.joints if info.controllable][self.num_arm_dofs:])
 
     def _set_gripper_information(self):
-        self.gripper_range = [0.0, 0.04]    # Gripper fully closed and open limits
+        self.gripper_range = np.array([0.0, 0.04])    # Gripper fully closed and open limits
         
         if self.use_gripper_gear:
             assert self.gripper_control_mode == 'position', "Gear must only be used in the position control mode."
@@ -125,6 +125,7 @@ class Panda(BaseRobot):
                         force=self.joints[joint_id].max_force,
                         maxVelocity=self.joints[joint_id].max_velocity
                     )
+                    
         elif self.gripper_control_mode == 'torque':
             # Get the current gripper position
             current_position = self.get_gripper_position()
@@ -168,8 +169,8 @@ class Panda(BaseRobot):
         Get the individual positions of the gripper fingers.
         """
         joint_states = p.getJointStates(self.robot_id, self.gripper_controllable_joints)
-        finger1_position = joint_states[0][0]
-        finger2_position = joint_states[1][0]
+        finger1_position = np.array(joint_states[0][0])
+        finger2_position = np.array(joint_states[1][0])
         
         # Return both finger positions as a tuple
         return finger1_position, finger2_position
@@ -204,13 +205,13 @@ class Panda(BaseRobot):
         """
         Open the gripper.
         """
-        self.set_gripper_position_target([self.gripper_range[1], self.gripper_range[1]])
+        self.set_gripper_position_target(np.array([self.gripper_range[1], self.gripper_range[1]]))
 
     def close_gripper(self):
         """
         Close the gripper.
         """
-        self.set_gripper_position_target([self.gripper_range[0], self.gripper_range[0]])
+        self.set_gripper_position_target(np.array([self.gripper_range[0], self.gripper_range[0]]))
 
     def _is_gripper_open(self, tolerance=1e-4, open_threshold=None):
         """
@@ -269,7 +270,7 @@ class Panda(BaseRobot):
             self._previous_gripper_position = self.get_gripper_position()  # Initialize previous position
 
         current_position = self.get_gripper_position()
-        position_change = max(abs(current_position[0] - self._previous_gripper_position[0]), abs(current_position[1] - self._previous_gripper_position[1]))
+        position_change = max(np.abs(current_position[0] - self._previous_gripper_position[0]), np.abs(current_position[1] - self._previous_gripper_position[1]))
 
         # Update the previous position for the next check
         self._previous_gripper_position = current_position
