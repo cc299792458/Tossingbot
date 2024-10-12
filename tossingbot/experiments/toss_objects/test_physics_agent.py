@@ -26,6 +26,8 @@ if __name__ == '__main__':
     use_gui = False
     box_length = 0.15
     box_n_rows, box_n_cols = 3, 3
+    use_heuristic = False
+    grasp_supervision = 'grasp'
 
     n_rotations = 1
     phi_deg = 45
@@ -43,6 +45,10 @@ if __name__ == '__main__':
             'box_n_rows': box_n_rows,
             'box_n_cols': box_n_cols,
             'box_length': box_length,
+        },
+        task_config={
+            'use_heuristic': use_heuristic,
+            'grasp_supervision': grasp_supervision,
         },
         objects_config={"object_types": ['ball', 'cube', 'rod']},
         camera_config={'n_rotations': n_rotations}
@@ -95,6 +101,7 @@ if __name__ == '__main__':
     avg_grasp_success = np.mean(grasp_success_history)
     avg_throw_success = np.mean(throw_success_history) if throw_success_history else 0.0
 
-    # Print final results
-    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}")   # Average Grasp Success Rate: 1.000 / 0.990 / 0.980
-    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}")   # Average Throw Success Rate (for successful grasps): 0.990 / 0.556 / 0.806
+    # Grasp Success: 1.000 / 0.990 / 0.980 | Throw Success: 0.990 / 0.556 / 0.806
+    # Grasp Success:  | Throw Success: 
+    print(f"Average Grasp Success Rate: {avg_grasp_success:.3f}") 
+    print(f"Average Throw Success Rate (for successful grasps): {avg_throw_success:.3f}") 

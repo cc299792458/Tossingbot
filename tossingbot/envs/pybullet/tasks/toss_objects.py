@@ -114,6 +114,7 @@ class TossObjects(BaseScene):
         default_task_config = {
             "use_heuristic": True,
             "consecutive_grasp_failures_threshold": 3,
+            "grasp_supervision": 'grasp',
         }
         if task_config is not None:
             default_task_config.update(task_config)
@@ -368,25 +369,25 @@ class TossObjects(BaseScene):
                 self.scene_config['workspace_position'][1] - self.scene_config['workspace_width'] / 2 + margin,
                 self.scene_config['workspace_position'][1] + self.scene_config['workspace_width'] / 2 - margin,
             )
-            yaw = random.uniform(-math.pi, math.pi)
+            # yaw = random.uniform(-math.pi, math.pi)
+            yaw = random.randint(0, self.camera_config['n_rotations'] - 1) * math.pi / 2
 
             if self.objects_config['object_types'][object_type] == 'ball':
-                _object = Ball(position=np.array([x, y, 0.02 + thickness]), mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
-                            rolling_friction=self.objects_config['rolling_friction'], radius=0.02)
+                _object = Ball(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([0.0, 0.0, yaw]), mass=0.1, 
+                               lateral_friction=self.objects_config['lateral_friction'], rolling_friction=self.objects_config['rolling_friction'], 
+                               radius=0.02)
             elif self.objects_config['object_types'][object_type] == 'cube':
-                _object = Cube(position=np.array([x, y, 0.02 + thickness]), mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
-                            rolling_friction=self.objects_config['rolling_friction'], half_extents=[0.02, 0.02, 0.02])
+                _object = Cube(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([0.0, 0.0, yaw]), mass=0.1, 
+                               lateral_friction=self.objects_config['lateral_friction'], rolling_friction=self.objects_config['rolling_friction'], 
+                               half_extents=[0.02, 0.02, 0.02])
             elif self.objects_config['object_types'][object_type] == 'rod':
-                _object = Rod(position=np.array([x, y, 0.015 + thickness]), orientation=np.array([0.0, np.pi / 2, 0.0]), \
-                              mass=0.1, lateral_friction=self.objects_config['lateral_friction'], \
-                              rolling_friction=self.objects_config['rolling_friction'], radius=0.015, height=0.16)
+                _object = Rod(position=np.array([x, y, 0.015 + thickness]), orientation=np.array([0.0, np.pi / 2, yaw]), mass=0.1, 
+                              lateral_friction=self.objects_config['lateral_friction'], rolling_friction=self.objects_config['rolling_friction'], 
+                              radius=0.015, height=0.16)
             elif self.objects_config['object_types'][object_type] == 'hammer':
-                _object = Hammer(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([np.pi / 2, 0.0, np.pi / 2]), 
-                                 handle_mass=0.05, head_mass=0.05, lateral_friction=1.0, rolling_friction=0.5, handle_radius=0.01, 
-                                 handle_height=0.12, head_half_extents=[0.05, 0.02, 0.0125])
-                # object_id = create_hammer(position=[x, y, 0.02 + thickness], orientation=[np.pi / 2, 0.0, np.pi / 2], 
-                #                           cylinder_radius=0.01, cylinder_height=0.12, box_half_extents=[0.05, 0.02, 0.0125], 
-                #                           color=random_color())
+                _object = Hammer(position=np.array([x, y, 0.02 + thickness]), orientation=np.array([np.pi / 2, 0.0, np.pi / 2 + yaw]), 
+                                 handle_mass=0.05, head_mass=0.05, lateral_friction=1.0, rolling_friction=0.5, 
+                                 handle_radius=0.01, handle_height=0.12, head_half_extents=[0.05, 0.02, 0.0125])
             else:
                 raise NotImplementedError
             
@@ -592,7 +593,9 @@ class TossObjects(BaseScene):
         return self.get_label()
     
     def get_label(self):
-        if self.grasp_success:  # NOTE: can be change to self.throw_success, as condition to supervise grasping with throwing performance
+        is_grasp_supervision = self.task_config['grasp_supervision'] == 'grasp'
+        is_throw_supervision = self.task_config['grasp_supervision'] == 'throw'
+        if (self.grasp_success and is_grasp_supervision) or (self.throw_success and is_throw_supervision):
             grasp_label = 0
         else:
             grasp_label = 1
