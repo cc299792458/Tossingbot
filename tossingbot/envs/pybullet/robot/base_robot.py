@@ -12,7 +12,6 @@ class BaseRobot:
     """
     The base class for robots
     """
-
     def __init__(
             self, 
             timestep, 
