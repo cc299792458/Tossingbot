@@ -4,7 +4,7 @@ import pybullet as p
 import pybullet_data
 
 from tossingbot.envs.pybullet.robot.base_robot import BaseRobot
-from tossingbot.envs.pybullet.utils.objects_utils import create_box, create_sphere, create_plane
+from tossingbot.envs.pybullet.utils.objects_utils import create_plane
 
 class Panda(BaseRobot):
     def __init__(

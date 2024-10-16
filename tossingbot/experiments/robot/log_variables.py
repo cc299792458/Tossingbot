@@ -4,6 +4,7 @@
 
 import os
 import time
+import numpy as np
 import pybullet as p
 import pybullet_data
 
@@ -26,12 +27,12 @@ if __name__ == '__main__':
     )
     create_plane()
 
-    position = [0.3, -0.3, 0.02]
+    position = np.array([0.3, -0.3, 0.02])
     create_sphere(radius=0.02, position=position)
 
-    post_grasp_pose=([0.3, 0.0, 0.1], [0.0, 0.0, 0.0, 1.0])
-    throw_pose = ([0.6, 0.0, 0.4], [0., -0.38268343, 0.0, 0.92387953])
-    throw_velocity = ([2.0, 0.0, 2.0], [0.0, 0.0, 0.0])
+    post_grasp_pose=(np.array([0.3, 0.0, 0.1]), np.array([0.0, 0.0, 0.0, 1.0]))
+    throw_pose = (np.array([0.6, 0.0, 0.4]), np.array([0., -0.38268343, 0.0, 0.92387953]))
+    throw_velocity = (np.array([2.0, 0.0, 2.0]), np.array([0.0, 0.0, 0.0]))
 
     grasp_complete = False
     throw_complete = False
@@ -39,7 +40,7 @@ if __name__ == '__main__':
 
     while True:
         if not grasp_complete:  # Grasp the sphere
-            grasp_complete = robot.grasp(tcp_target_pose=[position, [0.0, 0.0, 0.0, 1.0]], post_grasp_pose=post_grasp_pose)
+            grasp_complete = robot.grasp(tcp_target_pose=(position, np.array([0.0, 0.0, 0.0, 1.0])), post_grasp_pose=post_grasp_pose)
         elif not throw_complete:  # Throw the shpere
             throw_complete = robot.throw(tcp_target_pose=throw_pose, tcp_target_velocity=throw_velocity)
         elif wait_count <= 60:

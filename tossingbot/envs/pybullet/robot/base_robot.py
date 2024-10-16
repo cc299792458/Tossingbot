@@ -279,15 +279,15 @@ class BaseRobot:
         Set the target TCP pose.
         
         Args:
-            target_tcp_pose (list): A list containing the target TCP pose with [position, orientation].
+            target_tcp_pose (tuple): A tuple containing the target TCP pose with [position, orientation].
                                     - position: [x, y, z]
                                     - orientation: [qx, qy, qz, qw]
+            target_tcp_velocity (tuple): A tuple containing the target TCP velocity with [linear_velocity, angular_velocity].
+                                        - linear_velocity: [vx, vy, vz]
+                                        - angular_velocity: [wx, wy, wz]
         """
         target_joint_position = self.pose_ik(pose=target_tcp_pose)
-        target_joint_velocity = self.velocity_ik(
-            linear_velocity=target_tcp_velocity[0],
-            angular_velocity=target_tcp_velocity[0]
-        ) if target_tcp_velocity is not None else np.zeros([len(target_joint_position)])
+        target_joint_velocity = self.velocity_ik(target_tcp_velocity) if target_tcp_velocity is not None else np.zeros([len(target_joint_position)])
         self.set_arm_joint_position_target(target_position=target_joint_position, target_velocity=target_joint_velocity)
 
     def set_tcp_velocity_target(self, target_tcp_velocity):
@@ -295,12 +295,9 @@ class BaseRobot:
         Set the target velocity for the TCP.
         
         Args:
-            target_tcp_velocity (list): Desired velocity in Cartesian space [linear, angular].
+            target_tcp_velocity (tuple): Desired velocity in Cartesian space [linear_velocity, angular_velocity].
         """
-        target_joint_velocity = self.velocity_ik(
-            linear_velocity=target_tcp_velocity[0],
-            angular_velocity=target_tcp_velocity[1]
-        )
+        target_joint_velocity = self.velocity_ik(target_tcp_velocity)
         self.set_arm_joint_velocity_target(target_joint_velocity)
 
     def get_tcp_pose(self):
@@ -308,14 +305,14 @@ class BaseRobot:
         Get the current pose of the TCP.
         
         Returns:
-            list: A list containing the TCP pose with [position, orientation].
-                - position: [x, y, z]
-                - orientation: [qx, qy, qz, qw]
+            pose (tuple): A tuple containing the TCP pose with (position, orientation).
+                        - position: [x, y, z]
+                        - orientation: [qx, qy, qz, qw]
         """
         link_state = p.getLinkState(self.robot_id, self.tcp_id)
         position = np.array(link_state[0])
         orientation = np.array(link_state[1])
-        return [position, orientation]
+        return (position, orientation)
     
     def get_tcp_target_pose(self):
         if hasattr(self, '_tcp_target_pose'):
@@ -328,14 +325,14 @@ class BaseRobot:
         Get the current velocity of the TCP.
         
         Returns:
-            list: A list containing the TCP velocity with [linear_velocity, angular_velocity].
+            tuple: A tuple containing the TCP velocity with (linear_velocity, angular_velocity).
                 - linear_velocity: [vx, vy, vz]
                 - angular_velocity: [wx, wy, wz]
         """
         link_state = p.getLinkState(self.robot_id, self.tcp_id, computeLinkVelocity=True)
         linear_velocity = np.array(link_state[6])
         angular_velocity = np.array(link_state[7])
-        return [linear_velocity, angular_velocity]
+        return (linear_velocity, angular_velocity)
 
     ############### Pose and Velocity Inverse Kinematics ###############
     def pose_ik(self, pose, rest_pose=None):
@@ -343,7 +340,7 @@ class BaseRobot:
         Calculate inverse kinematics for the given TCP pose.
         
         Args:
-            pose (list): A list containing the pose [position, orientation].
+            pose (tuple): A tuple containing the pose (position, orientation).
                         - position: [x, y, z]
                         - orientation: [qx, qy, qz, qw]
                         
@@ -367,17 +364,19 @@ class BaseRobot:
         )
         return np.array(joint_position[:self.num_arm_dofs])
 
-    def velocity_ik(self, linear_velocity, angular_velocity):
+    def velocity_ik(self, velocity):
         """
         Compute joint velocities required to achieve the desired TCP (end-effector) velocity.
 
         Args:
-            linear_velocity (list or np.ndarray): Desired linear velocity [vx, vy, vz].
-            angular_velocity (list or np.ndarray): Desired angular velocity [wx, wy, wz].
+            velocity (tuple): A tuple containing the velocity (linear_velocity, angular_velocity).
+                        - linear_velocity: Desired linear velocity [vx, vy, vz].
+                        - angular_velocity: Desired angular velocity [wx, wy, wz].
 
         Returns:
             np.ndarray: Joint velocities to achieve the desired TCP velocity.
         """
+        linear_velocity, angular_velocity = velocity
         joint_positions = self.get_joint_position()
         zero_vec = [0.0] * len(joint_positions)
         jacobian_linear, jacobian_angular = p.calculateJacobian(
@@ -655,7 +654,7 @@ class BaseRobot:
         self.gripper_open_count += 1
 
         # Apply velocity control
-        joint_velocities = self.velocity_ik(self.tcp_target_velocity[0], self.tcp_target_velocity[1])
+        joint_velocities = self.velocity_ik(self.tcp_target_velocity)
         self.set_arm_joint_velocity_target(joint_velocities)
 
         # Calculate target pose and velocity for log
