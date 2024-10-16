@@ -317,10 +317,10 @@ class PhysicsAgent(BaseAgent):
             rotation_y = R.from_euler('y', -phi)
 
             throw_quaternion = (rotation_z * rotation_y).as_quat()
-            throw_pose = [np.array([r_batch[b][0], r_batch[b][1], r_batch[b][2]]), throw_quaternion]
+            throw_pose = (np.array([r_batch[b][0], r_batch[b][1], r_batch[b][2]]), throw_quaternion)
             throw_poses.append(throw_pose)
 
-            throw_velocity = [np.array([v_batch[b][0], v_batch[b][1], v_batch[b][2]]), np.array([0.0, 0.0, 0.0])]
+            throw_velocity = (np.array([v_batch[b][0], v_batch[b][1], v_batch[b][2]]), np.array([0.0, 0.0, 0.0]))
             throw_velocities.append(throw_velocity)
 
             # Determine the post grasp pose based on the throwing pose and throwing velocity
@@ -332,7 +332,7 @@ class PhysicsAgent(BaseAgent):
             post_grasp_y = r_batch[b][1] - delta_h * np.sin(theta)
             post_grasp_z = r_batch[b][2] - delta_z
             post_grasp_quaternion = rotation_z.as_quat()
-            post_grasp_pose = [np.array([post_grasp_x, post_grasp_y, post_grasp_z]), post_grasp_quaternion]
+            post_grasp_pose = (np.array([post_grasp_x, post_grasp_y, post_grasp_z]), post_grasp_quaternion)
             post_grasp_poses.append(post_grasp_pose)
 
         return post_grasp_poses, throw_poses, throw_velocities
