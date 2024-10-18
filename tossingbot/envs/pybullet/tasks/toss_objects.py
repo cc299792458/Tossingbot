@@ -415,7 +415,11 @@ class TossObjects(BaseScene):
 
     ############### Step ###############
     def pre_simulation_process(self, action):
-        grasp_pixel_index, self.post_grasp_pose, self.throw_pose, self.throw_velocity = action
+        # Unpack the action
+        if action is not None:
+            grasp_pixel_index, self.post_grasp_pose, self.throw_pose, self.throw_velocity = action
+        else:
+            return
 
         # Unpack the grasp pixel index
         yaw_index, pixel_y, pixel_x = grasp_pixel_index
@@ -451,6 +455,10 @@ class TossObjects(BaseScene):
     def pre_control_step(self):
         is_action_finished = False
         
+        if (not hasattr(self, 'grasp_pose') or not hasattr(self, 'post_grasp_pose') or 
+            not hasattr(self, 'throw_pose') or not hasattr(self, 'throw_velocity')):
+            return
+
         if not self.grasp_completed:
             self.grasp_completed = self.robot.grasp(tcp_target_pose=self.grasp_pose, post_grasp_pose=self.post_grasp_pose)
             if self.grasp_completed:
@@ -808,3 +816,9 @@ class TossObjects(BaseScene):
             end_point = corners[(i + 1) % len(corners)]
             debug_line_id = p.addUserDebugLine(start_point, end_point, lineColorRGB=[1, 0, 0], lineWidth=3)
             self.target_visualization_ids.append(debug_line_id)
+
+if __name__ == '__main__':
+    env = TossObjects()
+
+    # Since no action is specified, the process will continue indefinitely without terminating.
+    env.step(action=None)
