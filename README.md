@@ -1,5 +1,5 @@
 # Tossingbot
-This repository is used to **replicate** the TossingBot(https://tossingbot.cs.princeton.edu/) implementation.
+This repository **replicates** the TossingBot(https://tossingbot.cs.princeton.edu/) implementation.
 
 ## Installation
 
